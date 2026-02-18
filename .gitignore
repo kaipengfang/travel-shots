@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.next/
+.nuxt/
+.DS_Store
+*.log
+*.tmp
+.env
+.env.local
+/public/photos/
+.vercel
+
+# Python virtual environment
+.venv/

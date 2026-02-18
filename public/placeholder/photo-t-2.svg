@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="3200" viewBox="0 0 1800 3200">
+  <defs>
+    <linearGradient id="grad-t2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a2e1a"/>
+      <stop offset="100%" style="stop-color:#0d3d0d"/>
+    </linearGradient>
+  </defs>
+  <rect fill="url(#grad-t2)" width="1800" height="3200"/>
+  <text x="900" y="1550" text-anchor="middle" fill="#4a6a4a" font-size="120" font-family="system-ui">Photo T-2</text>
+  <text x="900" y="1700" text-anchor="middle" fill="#3a5a3a" font-size="60" font-family="system-ui">1800 × 3200</text>
+</svg>

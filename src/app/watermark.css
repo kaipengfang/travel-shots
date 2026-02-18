@@ -1,0 +1,37 @@
+/* 全局样式 - 给所有大图添加水印 */
+
+/* 灯箱中的图片水印 */
+.photo-with-watermark {
+  position: relative;
+  display: inline-block;
+}
+
+.photo-with-watermark::after {
+  content: '© Kaipeng Fang';
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
+  color: white;
+  font-size: 20px;
+  font-weight: bold;
+  opacity: 0.6;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  user-select: none;
+  z-index: 10;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  backdrop-filter: blur(4px);
+}
+
+/* 防止右键和拖拽 */
+.photo-with-watermark img {
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+.photo-with-watermark {
+  -webkit-touch-callout: none;
+}

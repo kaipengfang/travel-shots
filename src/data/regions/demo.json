@@ -1,0 +1,48 @@
+{
+  "id": "demo-region",
+  "name": { "zh": "示例地区", "en": "Demo Region" },
+  "coordinates": [104.0, 30.6],
+  "mapCode": "CN-51",
+  "albums": [
+    {
+      "id": "demo-album",
+      "title": { "zh": "示例相册", "en": "Demo Album" },
+      "date": "2024-01-01",
+      "cover": "demo/cover.webp",
+      "photos": [
+        {
+          "src": "demo/photo1.jpg",
+          "thumbnail": "demo/photo1.webp",
+          "width": 1920,
+          "height": 1280,
+          "caption": { "zh": "示例照片 1", "en": "Demo Photo 1" },
+          "location": { "zh": "示例地点", "en": "Demo Location" },
+          "date": "2024-01-01",
+          "exif": {
+            "camera": "Sony A7C",
+            "lens": "24-70mm f/2.8",
+            "iso": "100",
+            "aperture": "f/8",
+            "shutter": "1/250s"
+          }
+        },
+        {
+          "src": "demo/photo2.jpg",
+          "thumbnail": "demo/photo2.webp",
+          "width": 1280,
+          "height": 1920,
+          "caption": { "zh": "示例照片 2", "en": "Demo Photo 2" },
+          "location": { "zh": "示例地点", "en": "Demo Location" },
+          "date": "2024-01-01",
+          "exif": {
+            "camera": "Sony A7C",
+            "lens": "24-70mm f/2.8",
+            "iso": "200",
+            "aperture": "f/5.6",
+            "shutter": "1/500s"
+          }
+        }
+      ]
+    }
+  ]
+}

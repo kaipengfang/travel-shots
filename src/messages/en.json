@@ -1,0 +1,22 @@
+{
+  "nav": {
+    "home": "Home",
+    "about": "About"
+  },
+  "map": {
+    "title": "My Footprints",
+    "viewAll": "View All",
+    "photos": "photos"
+  },
+  "photo": {
+    "download": "Download Original",
+    "location": "Location",
+    "camera": "Camera",
+    "lens": "Lens",
+    "settings": "Settings"
+  },
+  "footer": {
+    "contact": "Contact",
+    "copyright": "© 2026 Kaipeng Fang"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "nav": {
+    "home": "首页",
+    "about": "关于"
+  },
+  "map": {
+    "title": "我的足迹",
+    "viewAll": "查看全部",
+    "photos": "张照片"
+  },
+  "photo": {
+    "download": "下载原图",
+    "location": "拍摄地点",
+    "camera": "相机",
+    "lens": "镜头",
+    "settings": "参数"
+  },
+  "footer": {
+    "contact": "联系邮箱",
+    "copyright": "© 2026 方恺鹏"
+  }
+}

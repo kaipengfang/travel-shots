@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3360" height="1440" viewBox="0 0 3360 1440">
+  <defs>
+    <linearGradient id="grad-p1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a192f"/>
+      <stop offset="100%" style="stop-color:#172a45"/>
+    </linearGradient>
+  </defs>
+  <rect fill="url(#grad-p1)" width="3360" height="1440"/>
+  <text x="1680" y="670" text-anchor="middle" fill="#3a4a6a" font-size="120" font-family="system-ui">Photo P-1</text>
+  <text x="1680" y="820" text-anchor="middle" fill="#2a3a5a" font-size="60" font-family="system-ui">3360 × 1440</text>
+</svg>

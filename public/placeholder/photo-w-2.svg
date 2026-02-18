@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3200" height="1800" viewBox="0 0 3200 1800">
+  <defs>
+    <linearGradient id="grad-w2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d1b2a"/>
+      <stop offset="100%" style="stop-color:#1b263b"/>
+    </linearGradient>
+  </defs>
+  <rect fill="url(#grad-w2)" width="3200" height="1800"/>
+  <text x="1600" y="850" text-anchor="middle" fill="#3a4a5a" font-size="120" font-family="system-ui">Photo W-2</text>
+  <text x="1600" y="1000" text-anchor="middle" fill="#2a3a4a" font-size="60" font-family="system-ui">3200 × 1800</text>
+</svg>

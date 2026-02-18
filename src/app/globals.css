@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+/* 暗色模式 */
+html.dark body {
+  background-color: #18181b;
+  color: #ededed;
+}
+
+html.dark .bg-white {
+  background-color: #18181b;
+}
+
+html.dark .text-gray-900,
+html.dark .text-gray-800 {
+  color: #ededed;
+}
+
+html.dark .text-gray-600,
+html.dark .text-gray-500 {
+  color: #a1a1aa;
+}
+
+html.dark .border-gray-100,
+html.dark .border-gray-200 {
+  border-color: rgba(255,255,255,0.1);
+}
+
+html.dark .hover\:text-gray-900:hover {
+  color: #ffffff;
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* 页面过渡动画 - 进入动画 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes listItemFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 页面进入动画类 */
+.page-enter {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+/* 列表项依次出现动画 */
+.list-item {
+  animation: listItemFadeIn 0.3s ease-out forwards;
+}

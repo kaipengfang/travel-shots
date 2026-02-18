@@ -1,0 +1,16 @@
+{
+  "photoBaseUrl": "https://your-cdn.com/photos",
+  "siteName": {
+    "zh": "我的足迹",
+    "en": "My Footprints"
+  },
+  "motto": {
+    "zh": "希望有一天我能点亮整张地图",
+    "en": "Hope to light up the whole map someday"
+  },
+  "author": {
+    "name": "Your Name",
+    "email": "your@email.com",
+    "website": "https://your-website.com"
+  }
+}
