@@ -92,28 +92,28 @@ Each region is a single JSON file under `src/data/regions/`. The site auto-disco
 
 Create `src/data/regions/{region-id}.json`:
 
-```json
+```jsonc
 {
-  "id": "yunnan",
+  "id": "yunnan",                          // unique id, used in URL: /region/yunnan
   "name": { "zh": "云南", "en": "Yunnan" },
-  "coordinates": [102.7, 25.0],
-  "mapCode": "CN-53",
+  "coordinates": [102.7, 25.0],            // [longitude, latitude] — reverse of Google Maps order
+  "mapCode": "CN-53",                      // used to highlight on map, see docs/codes.md
   "albums": [
     {
-      "id": "yunnan-dali",
+      "id": "yunnan-dali",                 // unique id, used in URL: /region/yunnan/yunnan-dali
       "title": { "zh": "大理", "en": "Dali" },
       "date": "2024-05-01",
-      "cover": "yunnan/dali/cover.webp",
+      "cover": "yunnan/dali/cover.webp",   // album cover on region page, relative to photoBaseUrl
       "photos": [
         {
-          "src": "yunnan/dali/001.jpg",
-          "thumbnail": "yunnan/dali/001.webp",
-          "width": 4000,
+          "src": "yunnan/dali/001.jpg",        // full-res image shown in lightbox
+          "thumbnail": "yunnan/dali/001.webp", // compressed thumbnail (800px wide) for masonry
+          "width": 4000,                       // actual pixel dimensions — required, wrong values break layout
           "height": 2667,
           "caption": { "zh": "洱海日落", "en": "Sunset over Erhai Lake" },
           "location": { "zh": "大理，云南", "en": "Dali, Yunnan" },
           "date": "2024-05-01",
-          "exif": {
+          "exif": {                            // optional, all subfields can be omitted
             "camera": "Sony A7C",
             "lens": "24-70mm f/2.8",
             "iso": "100",

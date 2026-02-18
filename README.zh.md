@@ -92,28 +92,28 @@ Region（地区）→ Album（相册）→ Photo（照片）
 
 在 `src/data/regions/` 下新建 `{region-id}.json`：
 
-```json
+```jsonc
 {
-  "id": "yunnan",
+  "id": "yunnan",                          // 唯一标识，用于 URL：/region/yunnan
   "name": { "zh": "云南", "en": "Yunnan" },
-  "coordinates": [102.7, 25.0],
-  "mapCode": "CN-53",
+  "coordinates": [102.7, 25.0],            // [经度, 纬度]，注意与 Google Maps 顺序相反
+  "mapCode": "CN-53",                      // 地图点亮用，参考 docs/codes.md
   "albums": [
     {
-      "id": "yunnan-dali",
+      "id": "yunnan-dali",                 // 唯一标识，用于 URL：/region/yunnan/yunnan-dali
       "title": { "zh": "大理", "en": "Dali" },
       "date": "2024-05-01",
-      "cover": "yunnan/dali/cover.webp",
+      "cover": "yunnan/dali/cover.webp",   // 地区页相册封面，相对于 photoBaseUrl
       "photos": [
         {
-          "src": "yunnan/dali/001.jpg",
-          "thumbnail": "yunnan/dali/001.webp",
-          "width": 4000,
+          "src": "yunnan/dali/001.jpg",        // 灯箱大图
+          "thumbnail": "yunnan/dali/001.webp", // 瀑布流缩略图（800px 宽）
+          "width": 4000,                       // 原图实际像素，必填，填错会导致布局错乱
           "height": 2667,
           "caption": { "zh": "洱海日落", "en": "Sunset over Erhai Lake" },
           "location": { "zh": "大理，云南", "en": "Dali, Yunnan" },
           "date": "2024-05-01",
-          "exif": {
+          "exif": {                            // 可选，所有子字段均可省略
             "camera": "Sony A7C",
             "lens": "24-70mm f/2.8",
             "iso": "100",
