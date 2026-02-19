@@ -13,7 +13,7 @@ DATA_FILE = "./src/data/photos.ts"
 ANNOTATOR_DIR = "../photo-annotator"
 
 # ========== CDN 配置 ==========
-PHOTO_CDN_BASE = "https://photos.fangkaipeng.com"
+PHOTO_CDN_BASE = "https://your-cdn.com"
 USE_CDN = True  # True=云端路径，False=本地路径
 # ==============================
 

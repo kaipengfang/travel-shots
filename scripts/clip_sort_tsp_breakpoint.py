@@ -4,9 +4,17 @@ CLIP 照片排序 - TSP + 最佳断点
 1. TSP 求解得到环
 2. 找相似度最低的边作为断点
 3. 从断点开始排序，避免首尾割裂
+
+流程：
+- 扫描 public/photos/{region}/{album}/ 下的 webp 缩略图
+- 若 region JSON 中有旧照片但本地没有 webp，从 R2 下载
+- 所有照片统一 CLIP 排序后写回 region JSON
 """
 import os
 import json
+import urllib.request
+import urllib.parse
+import boto3
 import numpy as np
 import torch
 from PIL import Image
@@ -14,8 +22,21 @@ from sklearn.metrics.pairwise import cosine_similarity
 import timm
 from timm.data import resolve_data_config
 from timm.data.transforms_factory import create_transform
+from dotenv import load_dotenv
+
+load_dotenv(".env.local")
 
 MODEL_NAME = "vit_large_patch14_clip_336"
+
+# R2 客户端（直接从 R2 下载，绕过 CDN 限制）
+def get_r2_client():
+    return boto3.client(
+        's3',
+        endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+        aws_access_key_id=os.environ['R2_ACCESS_KEY_ID'],
+        aws_secret_access_key=os.environ['R2_SECRET_ACCESS_KEY'],
+        region_name='auto',
+    )
 
 def load_model():
     """加载 CLIP 模型"""
@@ -209,6 +230,84 @@ def tsp_with_breakpoint(embeddings, image_paths):
     
     return [image_paths[i] for i in path]
 
+def download_webp_if_missing(photo, local_dir, r2_client):
+    """如果本地没有 webp 缩略图，从 R2 直接下载"""
+    thumbnail = photo.get('thumbnail', '')
+    if not thumbnail:
+        return None
+    filename = os.path.basename(thumbnail).replace(' ', '_')
+    local_path = os.path.join(local_dir, filename)
+    if os.path.exists(local_path):
+        return local_path
+    # R2 key = photos/{thumbnail}（thumbnail 已是相对路径如 hongkong/hongkong/xxx.webp）
+    r2_key = f"photos/{thumbnail}"
+    try:
+        r2_client.download_file(os.environ['R2_BUCKET_NAME'], r2_key, local_path)
+        print(f"  ⬇️ 下载: {filename}")
+        return local_path
+    except Exception as e:
+        print(f"  ⚠️ 下载失败 {filename}: {e}")
+        return None
+
+
+def apply_sort_to_region(region_id, album_id, local_dir, model, transform, device, r2_client):
+    """
+    下载旧照片 webp（如缺失），对所有照片统一 CLIP 排序后写回 region JSON。
+
+    两种情况：
+    1. 新建相册：region JSON 或相册不存在，跳过（数据由上传脚本负责写入）
+    2. 已有相册：下载缺失的旧照片 webp，与新照片一起统一排序
+    """
+    region_file = os.path.join("./src/data/regions", f"{region_id}.json")
+    if not os.path.exists(region_file):
+        print(f"  ℹ️ {region_file} 不存在，跳过（新 region 请先用上传脚本生成 JSON）")
+        return
+
+    with open(region_file, 'r', encoding='utf-8') as f:
+        region = json.load(f)
+
+    album = next((a for a in region['albums'] if a['id'] == f"{region_id}-{album_id}"), None)
+    if not album:
+        print(f"  ℹ️ 相册 {region_id}-{album_id} 不存在，跳过（新相册请先用上传脚本生成 JSON）")
+        return
+
+    # 下载旧照片缺失的 webp
+    print(f"  🔍 检查旧照片缩略图（共 {len(album['photos'])} 张）...")
+    for photo in album['photos']:
+        download_webp_if_missing(photo, local_dir, r2_client)
+
+    # 重新扫描本地所有 webp
+    all_webp = sorted([f for f in os.listdir(local_dir) if f.endswith('.webp')])
+    if not all_webp:
+        print(f"  ⚠️ 没有可用的 webp 文件，跳过")
+        return
+
+    print(f"  📊 共 {len(all_webp)} 张参与排序")
+    image_paths = [os.path.join(local_dir, f) for f in all_webp]
+
+    # 提取特征 + TSP 排序
+    embeddings = extract_embeddings(model, transform, device, image_paths)
+    sorted_paths = tsp_with_breakpoint(embeddings, image_paths)
+    sorted_filenames = [os.path.basename(p).replace('.webp', '.jpg') for p in sorted_paths]
+
+    # 按排序重排 album photos
+    photo_map = {os.path.basename(p['src']).replace(' ', '_'): p for p in album['photos']}
+    ordered = []
+    for fname in sorted_filenames:
+        fname_normalized = fname.replace(' ', '_')
+        if fname_normalized in photo_map:
+            ordered.append(photo_map.pop(fname_normalized))
+    # 未匹配的追加（理论上不应有）
+    ordered.extend(photo_map.values())
+
+    album['photos'] = ordered
+
+    with open(region_file, 'w', encoding='utf-8') as f:
+        json.dump(region, f, ensure_ascii=False, indent=2)
+
+    print(f"✅ 已更新: {region_file}")
+
+
 def main():
     PHOTOS_DIR = "./public/photos"
     
@@ -229,49 +328,21 @@ def main():
             # 检查是否有 webp 文件
             webp_files = [f for f in os.listdir(album_path) if f.endswith('.webp')]
             if webp_files:
-                albums.append((f"{region_id}/{album_id}", f"{region_id} - {album_id}"))
+                albums.append((region_id, album_id, f"{region_id}/{album_id}"))
     
     print(f"发现 {len(albums)} 个相册\n")
     
-    # 加载模型
+    # 加载模型 + R2 客户端
     model, transform, device = load_model()
+    r2_client = get_r2_client()
     
-    for album_path, album_name in albums:
+    for region_id, album_id, album_path in albums:
         full_path = os.path.join(PHOTOS_DIR, album_path)
         if not os.path.exists(full_path):
             continue
         
-        # 使用缩略图
-        files = sorted([f for f in os.listdir(full_path) if f.lower().endswith('.webp')])
-        
-        print(f"\n🖼️ 处理: {album_name} ({len(files)} 张)")
-        
-        if not files:
-            continue
-        
-        image_paths = [os.path.join(full_path, f) for f in files]
-        
-        # 提取特征
-        embeddings = extract_embeddings(model, transform, device, image_paths)
-        
-        # TSP + 最佳断点
-        sorted_paths = tsp_with_breakpoint(embeddings, image_paths)
-        
-        # 保存结果
-        result = []
-        for path in sorted_paths:
-            filename = os.path.basename(path)
-            jpg_filename = filename.replace('.webp', '.jpg')
-            result.append({
-                "filename": filename,
-                "path": f"/photos/{album_path}/{jpg_filename}"
-            })
-        
-        output_file = os.path.join(full_path, "clip_sorted.json")
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
-        
-        print(f"✅ 已保存: {output_file}")
+        print(f"\n🖼️ 处理: {region_id} - {album_id}")
+        apply_sort_to_region(region_id, album_id, full_path, model, transform, device, r2_client)
     
     print("\n🎉 全部完成!")
 

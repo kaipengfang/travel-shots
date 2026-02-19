@@ -2,7 +2,7 @@
 
 > 以地图为核心的个人摄影作品展示网站。点亮你去过的每一个地方。
 
-**[在线演示 →](https://gallery.fangkaipeng.com)** · [English →](./README.md)
+**[在线演示 →](https://your-demo-url.com)** · [English →](./README.md)
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)

@@ -2,7 +2,7 @@
 
 > A personal photography showcase website centered around an interactive world map. Light up every place you've been.
 
-**[Live Demo →](https://gallery.fangkaipeng.com)** · [中文文档 →](./README.zh.md)
+**[Live Demo →](https://your-demo-url.com)** · [中文文档 →](./README.zh.md)
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
@@ -203,19 +203,54 @@ Every push to `main` triggers an automatic redeploy.
 
 ## CLIP Smart Sorting (Optional)
 
-Automatically sorts photos within each album by visual similarity for smoother transitions.
+Automatically sorts photos within each album by visual similarity for smoother visual transitions.
+
+### Setup
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install torch transformers pillow numpy
-
-# Generate sorted order
-python3 scripts/clip_sort_tsp_breakpoint.py
-
-# Apply to regions/*.json
-npx ts-node scripts/apply-clip-sort.ts
+pip install torch timm pillow numpy scikit-learn boto3 python-dotenv
 ```
+
+### Usage
+
+Place WebP thumbnails under `public/photos/{region}/{album}/`, then run:
+
+```bash
+python3 scripts/clip_sort_tsp_breakpoint.py
+```
+
+This will:
+1. Scan all albums under `public/photos/`
+2. For albums with existing photos in the region JSON, **automatically download missing WebP thumbnails from R2**
+3. Run CLIP feature extraction + TSP optimization on all photos together
+4. Write the sorted order directly back to `src/data/regions/{region}.json`
+
+> Requires R2 credentials in `.env.local` for downloading existing thumbnails.
+
+### Upload Photos
+
+Use the generic upload script to upload photos and update region JSON in one step:
+
+```bash
+# Append to existing album
+node scripts/upload-photos.mjs \
+  --dir /path/to/photos \
+  --region hongkong --album hongkong \
+  --processed /path/to/processed.json
+
+# Create new region + album
+node scripts/upload-photos.mjs \
+  --dir /path/to/photos \
+  --region macau --album macau \
+  --processed /path/to/processed.json \
+  --new-region \
+  --region-name-zh 澳门 --region-name-en Macau \
+  --coordinates "113.5,22.2" --map-code CN-MO
+```
+
+Then run CLIP sorting to reorder all photos by visual similarity.
 
 ---
 
@@ -233,10 +268,12 @@ src/
     ├── types.ts
     └── photoUrl.ts
 scripts/
-├── gen-data.py             # Generate JSON from photo folders
-├── batch-thumbnails.sh     # Batch generate WebP thumbnails
-├── clip_sort_tsp_breakpoint.py
-└── upload-to-r2.mjs
+├── gen-data.py                     # Generate JSON from photo folders
+├── batch-thumbnails.sh             # Batch generate WebP thumbnails
+├── upload-photos.mjs               # Generic upload script (R2 + region JSON)
+├── upload-to-r2.mjs                # Upload photos to Cloudflare R2
+├── clip_sort_tsp_breakpoint.py     # CLIP + TSP sorting (writes directly to region JSON)
+└── apply-clip-sort.ts              # Apply existing clip_sorted.json to region JSON
 ```
 
 ---

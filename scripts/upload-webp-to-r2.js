@@ -109,7 +109,7 @@ async function uploadAllWebp() {
   }
   
   console.log('\n✨ Upload complete!');
-  console.log(`🌐 Files accessible at: https://photos.fangkaipeng.com/photos/{region}/{album}/*.webp`);
+  console.log(`🌐 Files accessible at: https://your-cdn.com/photos/{region}/{album}/*.webp`);
 }
 
 // Run the upload

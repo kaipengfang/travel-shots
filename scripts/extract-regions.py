@@ -11,7 +11,7 @@ src = os.path.join(root, 'src/data/photos.ts')
 out_dir = os.path.join(root, 'src/data/regions')
 os.makedirs(out_dir, exist_ok=True)
 
-BASE_URL = 'https://photos.fangkaipeng.com/photos/'
+BASE_URL = 'https://your-cdn.com/photos/'
 
 with open(src, 'r', encoding='utf-8') as f:
     content = f.read()
