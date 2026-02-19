@@ -205,17 +205,52 @@ vercel
 
 使用 CLIP 视觉模型对相册照片按视觉相似度自动排序，让相邻照片过渡更自然。
 
+### 安装依赖
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install torch transformers pillow numpy
-
-# 运行排序（生成 clip_sorted.json）
-python3 scripts/clip_sort_tsp_breakpoint.py
-
-# 将排序结果写入 regions/*.json
-npx ts-node scripts/apply-clip-sort.ts
+pip install torch timm pillow numpy scikit-learn boto3 python-dotenv
 ```
+
+### 使用方法
+
+将 WebP 缩略图放到 `public/photos/{region}/{album}/` 目录下，然后运行：
+
+```bash
+python3 scripts/clip_sort_tsp_breakpoint.py
+```
+
+脚本会自动：
+1. 扫描 `public/photos/` 下的所有相册
+2. 对于 region JSON 中已有的旧照片，**自动从 R2 下载缺失的 WebP 缩略图**
+3. 对所有照片统一进行 CLIP 特征提取 + TSP 优化排序
+4. 将排序结果直接写回 `src/data/regions/{region}.json`
+
+> 需要在 `.env.local` 中配置 R2 凭证，用于下载已有照片的缩略图。
+
+### 上传照片
+
+使用通用上传脚本，一步完成上传图片和更新 region JSON：
+
+```bash
+# 追加到已有相册
+node scripts/upload-photos.mjs \
+  --dir /path/to/photos \
+  --region hongkong --album hongkong \
+  --processed /path/to/processed.json
+
+# 新建 region + 相册
+node scripts/upload-photos.mjs \
+  --dir /path/to/photos \
+  --region macau --album macau \
+  --processed /path/to/processed.json \
+  --new-region \
+  --region-name-zh 澳门 --region-name-en Macau \
+  --coordinates "113.5,22.2" --map-code CN-MO
+```
+
+上传完成后运行 CLIP 排序，对所有照片按视觉相似度重新排列。
 
 ---
 
@@ -233,10 +268,12 @@ src/
     ├── types.ts
     └── photoUrl.ts
 scripts/
-├── gen-data.py             # 从照片文件夹生成 JSON 数据
-├── batch-thumbnails.sh     # 批量生成 WebP 缩略图
-├── clip_sort_tsp_breakpoint.py
-└── upload-to-r2.mjs
+├── gen-data.py                     # 从照片文件夹生成 JSON 数据
+├── batch-thumbnails.sh             # 批量生成 WebP 缩略图
+├── upload-photos.mjs               # 通用上传脚本（R2 + region JSON）
+├── upload-to-r2.mjs                # 上传照片到 Cloudflare R2
+├── clip_sort_tsp_breakpoint.py     # CLIP + TSP 排序（直接写回 region JSON）
+└── apply-clip-sort.ts              # 将已有 clip_sorted.json 应用到 region JSON
 ```
 
 ---
