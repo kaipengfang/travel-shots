@@ -2,7 +2,7 @@
 
 > A personal photography showcase website centered around an interactive world map. Light up every place you've been.
 
-**[Live Demo →](https://your-demo-url.com)** · [中文文档 →](./README.zh.md)
+**[Live Demo →](https://gallery.fangkaipeng.com)** · [中文文档 →](./README.zh.md)
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
