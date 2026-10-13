@@ -60,7 +60,6 @@ export default function Home() {
         <section className="flex-1 min-h-0 relative">
           <WorldMap 
             locations={mapLocations}
-            onLocationClick={setSelectedRegion}
             locale={locale}
             visitedProvinces={visitedProvinces}
             visitedCountries={visitedCountries}

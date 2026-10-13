@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { geoNaturalEarth1, geoPath, geoCentroid } from 'd3-geo';
-import type { FeatureCollection, Feature, Geometry } from 'geojson';
+import type { FeatureCollection, Geometry } from 'geojson';
 import * as topojson from 'topojson-client';
 import { regions } from '@/data';
 import { useRouter } from 'next/navigation';
@@ -13,18 +13,28 @@ import { photoUrl } from '@/lib/photoUrl';
 interface Location {
   id: string;
   name: { zh: string; en: string };
-  coordinates: [number, number];
+  coordinates?: [number, number];
   photoCount: number;
   mapCode: string;
 }
 
 interface WorldMapProps {
   locations: Location[];
-  onLocationClick: (locationId: string) => void;
   locale: 'zh' | 'en';
   visitedCountries?: string[];
   visitedProvinces?: number[];
 }
+
+// GeoJSON 属性类型
+interface WorldFeatureProps {
+  name?: string;
+}
+interface ChinaFeatureProps {
+  adcode?: number;
+  name?: string;
+}
+type WorldCollection = FeatureCollection<Geometry, WorldFeatureProps>;
+type ChinaCollection = FeatureCollection<Geometry, ChinaFeatureProps>;
 
 const WORLD_GEO_URL = '/maps/world.json';
 const CHINA_GEO_URL = '/maps/china.json';
@@ -41,19 +51,16 @@ const CHINA_PROVINCE_STROKE = '#3a4a70'; // 中国省份边界更亮一点凸显
 const BASE_STROKE_WIDTH = 0.5;
 const BASE_CHINA_STROKE_WIDTH = 1.2;
 
-// 8 个方向的锚点定义
-type PopupDirection = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left' | 'right' | 'left' | 'bottom' | 'top';
+const MIN_ZOOM = 1.5;
+const MAX_ZOOM = 10;
 
-const DIRECTION_OFFSETS: Record<PopupDirection, { x: number; y: number }> = {
-  'bottom-right': { x: 1, y: 1 },
-  'bottom-left': { x: -1, y: 1 },
-  'top-right': { x: 1, y: -1 },
-  'top-left': { x: -1, y: -1 },
-  'right': { x: 1, y: 0 },
-  'left': { x: -1, y: 0 },
-  'bottom': { x: 0, y: 1 },
-  'top': { x: 0, y: -1 },
-};
+// 视口尺寸（SVG 坐标系）
+const svgWidth = 1400;
+const svgHeight = 820;
+
+// 气泡框测量前的估计尺寸（宽度须与 CSS min-w 一致）
+const DEFAULT_POPUP_W = 420;
+const DEFAULT_POPUP_H = 300;
 
 // ISO 3166-2 中国省级代码 → adcode 映射
 const mapCodeToAdcode = (mapCode: string): number | null => {
@@ -70,30 +77,60 @@ const mapCodeToAdcode = (mapCode: string): number | null => {
   return map[mapCode] ?? null;
 };
 
-export default function WorldMap({ locations, onLocationClick, locale, visitedProvinces = [], visitedCountries = [] }: WorldMapProps) {
+const countryNameToCode: Record<string, string> = {
+  'China': 'CN',
+  'Japan': 'JP',
+  'Iceland': 'IS',
+  'United States': 'US',
+  'United States of America': 'US',
+  'South Korea': 'KR',
+  'Singapore': 'SG',
+};
+
+// 标记点坐标：优先使用 region JSON 中配置的 coordinates，缺失时回退到省份质心
+const resolveCoordinates = (location: Location, chinaGeo: ChinaCollection | null): [number, number] | null => {
+  if (location.coordinates) return location.coordinates;
+  const adcode = mapCodeToAdcode(location.mapCode);
+  if (adcode && chinaGeo) {
+    const provinceFeature = chinaGeo.features.find(f => f.properties?.adcode === adcode);
+    if (provinceFeature) {
+      return geoCentroid(provinceFeature) as [number, number];
+    }
+  }
+  return null;
+};
+
+interface PointerPos { x: number; y: number }
+
+export default function WorldMap({ locations, locale, visitedProvinces = [], visitedCountries = [] }: WorldMapProps) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [mounted, setMounted] = useState(false);
-  const [worldGeo, setWorldGeo] = useState<FeatureCollection | null>(null);
-  const [chinaGeo, setChinaGeo] = useState<FeatureCollection | null>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const [worldGeo, setWorldGeo] = useState<WorldCollection | null>(null);
+  const [chinaGeo, setChinaGeo] = useState<ChinaCollection | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [popupKey, setPopupKey] = useState(0);
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // 灯箱状态（不再需要，改用页面跳转）
-  // const [lightboxOpen, setLightboxOpen] = useState(false);
-  // const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
-  // const [lightboxPhotos, setLightboxPhotos] = useState<Photo[]>([]);
-  // const [lightboxRegionId, setLightboxRegionId] = useState<string | null>(null);
+
+  // 容器实际像素尺寸（由 ResizeObserver 维护，避免渲染期间读取 DOM）
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  // 气泡框实际尺寸（渲染后测量）
+  const [popupSize, setPopupSize] = useState({ width: DEFAULT_POPUP_W, height: DEFAULT_POPUP_H });
 
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [zoom, setZoom] = useState(1.7);
   const [isDragging, setIsDragging] = useState(false);
-  const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
-  // 延迟隐藏气泡框，给鼠标移动到气泡框的时间
-  const handleMouseEnterMarker = useCallback((id: string) => {
+  // 指针状态（鼠标 / 触摸 / 笔统一处理）
+  const pointersRef = useRef<Map<number, PointerPos>>(new Map());
+  const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const dragMovedRef = useRef(false);
+  const pinchStart = useRef<{ dist: number; mid: PointerPos; zoom: number; panX: number; panY: number } | null>(null);
+  const lastPointerTypeRef = useRef<string>('mouse');
+
+  // 延迟隐藏气泡框，给鼠标移动到气泡框的时间（仅鼠标 hover；触摸设备用点击切换）
+  const handleMouseEnterMarker = useCallback((e: React.PointerEvent, id: string) => {
+    if (e.pointerType !== 'mouse') return;
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
       hideTimeoutRef.current = null;
@@ -101,58 +138,60 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
     setHoveredId(id);
   }, []);
 
-  const handleMouseLeaveMarker = useCallback(() => {
+  const handleMouseLeaveMarker = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse') return;
     hideTimeoutRef.current = setTimeout(() => {
       setHoveredId(null);
     }, 150); // 150ms 延迟，足够鼠标移动到气泡框
   }, []);
 
-  const handleMouseEnterPopup = useCallback(() => {
+  const handleMouseEnterPopup = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse') return;
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
       hideTimeoutRef.current = null;
     }
   }, []);
 
-  const handleMouseLeavePopup = useCallback(() => {
+  const handleMouseLeavePopup = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse') return;
     setHoveredId(null);
+  }, []);
+
+  // 触摸设备：点击标记点切换气泡框
+  const handleMarkerClick = useCallback((e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (lastPointerTypeRef.current === 'mouse') return; // 桌面端由 hover 控制
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+    setHoveredId(prev => (prev === id ? null : id));
   }, []);
 
   const visitedCountriesSet = useMemo(() => new Set(visitedCountries || locations.map(l => l.mapCode)), [visitedCountries, locations]);
   const visitedProvincesSet = useMemo(() => new Set(visitedProvinces), [visitedProvinces]);
 
-  // DEBUG: console.log('Country:', countryName);
-  const countryNameToCode: Record<string, string> = {
-    'China': 'CN',
-    'Japan': 'JP',
-    'Iceland': 'IS',
-    'United States': 'US',
-    'United States of America': 'US',
-    'South Korea': 'KR',
-    'Singapore': 'SG',
-  };
-
   useEffect(() => {
-    setMounted(true);
-
     // 添加超时处理
     const timeout = setTimeout(() => {
-      if (!worldGeo) {
+      setWorldGeo(prev => {
+        if (prev) return prev;
         console.warn('Map loading timeout, using fallback');
-        setWorldGeo({ type: 'FeatureCollection', features: [] } as FeatureCollection);
-      }
+        return { type: 'FeatureCollection', features: [] };
+      });
     }, 5000);
 
     fetch(WORLD_GEO_URL)
       .then(res => res.json())
       .then(data => {
-        const countries = topojson.feature(data, data.objects.countries) as unknown as FeatureCollection;
+        const countries = topojson.feature(data, data.objects.countries) as unknown as WorldCollection;
         setWorldGeo(countries);
         clearTimeout(timeout);
       })
       .catch(err => {
         console.error('Failed to load world map:', err);
-        setWorldGeo({ type: 'FeatureCollection', features: [] } as FeatureCollection);
+        setWorldGeo({ type: 'FeatureCollection', features: [] });
         clearTimeout(timeout);
       });
 
@@ -160,10 +199,10 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
       .then(res => res.json())
       .then(data => {
         if (data.objects) {
-          const china = topojson.feature(data, data.objects.china) as unknown as FeatureCollection;
+          const china = topojson.feature(data, data.objects.china) as unknown as ChinaCollection;
           setChinaGeo(china);
         } else {
-          setChinaGeo(data as FeatureCollection);
+          setChinaGeo(data as ChinaCollection);
         }
       })
       .catch(err => console.error('Failed to load China map:', err));
@@ -171,9 +210,31 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
     return () => clearTimeout(timeout);
   }, []);
 
-  // 视口尺寸
-  const svgWidth = 1400;
-  const svgHeight = 820;
+  // 监听容器尺寸变化（容器在地图加载完成后才挂载，所以依赖 worldGeo）
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      setContainerSize(prev =>
+        prev.width === rect.width && prev.height === rect.height ? prev : { width: rect.width, height: rect.height }
+      );
+    };
+    // ResizeObserver 在 observe() 时会立即回调一次初始尺寸
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [worldGeo]);
+
+  // 测量气泡框实际尺寸，用于定位
+  useLayoutEffect(() => {
+    const el = popupRef.current;
+    if (!el) return;
+    const { offsetWidth, offsetHeight } = el;
+    setPopupSize(prev =>
+      prev.width === offsetWidth && prev.height === offsetHeight ? prev : { width: offsetWidth, height: offsetHeight }
+    );
+  }, [hoveredId, locale]);
 
   const mapAspectRatio = 0.6;
   const edgePaddingX = 80;
@@ -184,9 +245,6 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
   const scaleByWidth = svgWidth / (2 * Math.PI);
   const scaleByHeight = svgHeight / (2 * Math.PI * mapAspectRatio);
   const baseScale = Math.min(scaleByWidth, scaleByHeight) * 0.8;
-
-  const mapWidth = baseScale * 2 * Math.PI * zoom;
-  const mapHeight = mapWidth * mapAspectRatio;
 
   const calcMaxPan = useCallback((mapSize: number, viewportSize: number, currentZoom: number, basePadding: number, zoomScale: number) => {
     const effectivePadding = basePadding * currentZoom * zoomScale;
@@ -217,94 +275,139 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
     };
   }, [baseScale, calcMaxPan]);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    setIsDragging(true);
-    dragStart.current = { x: e.clientX, y: e.clientY, panX, panY };
-  }, [panX, panY]);
+  // 客户端像素坐标 → SVG 坐标
+  const clientToSvg = useCallback((clientX: number, clientY: number): PointerPos => {
+    const el = containerRef.current;
+    if (!el) return { x: clientX, y: clientY };
+    const rect = el.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left) / rect.width * svgWidth,
+      y: (clientY - rect.top) / rect.height * svgHeight,
+    };
+  }, []);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isDragging) return;
-    const dx = e.clientX - dragStart.current.x;
-    const dy = e.clientY - dragStart.current.y;
-    const clamped = clampPan(dragStart.current.panX + dx, dragStart.current.panY + dy, zoom);
+  // 以某个 SVG 点为中心缩放（可附加平移量）
+  const zoomAround = useCallback((point: PointerPos, newZoom: number, fromZoom: number, fromPanX: number, fromPanY: number, extraDx = 0, extraDy = 0) => {
+    const offsetX = point.x - svgWidth / 2 - fromPanX;
+    const offsetY = point.y - svgHeight / 2 - fromPanY;
+    const zoomRatio = newZoom / fromZoom;
+    const newPanX = fromPanX - offsetX * (zoomRatio - 1) + extraDx;
+    const newPanY = fromPanY - offsetY * (zoomRatio - 1) + extraDy;
+    const clamped = clampPan(newPanX, newPanY, newZoom);
+    setZoom(newZoom);
     setPanX(clamped.x);
     setPanY(clamped.y);
-  }, [isDragging, zoom, clampPan]);
+  }, [clampPan]);
 
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    lastPointerTypeRef.current = e.pointerType;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    const pointers = Array.from(pointersRef.current.values());
+    if (pointers.length === 1) {
+      setIsDragging(true);
+      dragMovedRef.current = false;
+      dragStart.current = { x: e.clientX, y: e.clientY, panX, panY };
+      pinchStart.current = null;
+    } else if (pointers.length === 2) {
+      const [a, b] = pointers;
+      const dist = Math.hypot(b.x - a.x, b.y - a.y);
+      const mid = clientToSvg((a.x + b.x) / 2, (a.y + b.y) / 2);
+      pinchStart.current = { dist: Math.max(dist, 1), mid, zoom, panX, panY };
+      setIsDragging(false);
+    }
+  }, [panX, panY, zoom, clientToSvg]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!pointersRef.current.has(e.pointerId)) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pointers = Array.from(pointersRef.current.values());
+
+    if (pointers.length >= 2 && pinchStart.current) {
+      // 双指缩放：围绕两指中点缩放，并跟随中点移动
+      const [a, b] = pointers;
+      const dist = Math.hypot(b.x - a.x, b.y - a.y);
+      const mid = clientToSvg((a.x + b.x) / 2, (a.y + b.y) / 2);
+      const start = pinchStart.current;
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, start.zoom * (dist / start.dist)));
+      zoomAround(start.mid, newZoom, start.zoom, start.panX, start.panY, mid.x - start.mid.x, mid.y - start.mid.y);
+      dragMovedRef.current = true;
+      return;
+    }
+
+    if (!isDragging || pointers.length !== 1) return;
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMovedRef.current = true;
+    // 拖拽距离按容器实际尺寸换算到 SVG 坐标
+    const el = containerRef.current;
+    const scale = el ? svgWidth / el.getBoundingClientRect().width : 1;
+    const clamped = clampPan(dragStart.current.panX + dx * scale, dragStart.current.panY + dy * scale, zoom);
+    setPanX(clamped.x);
+    setPanY(clamped.y);
+  }, [isDragging, zoom, clampPan, clientToSvg, zoomAround]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const wasTracked = pointersRef.current.delete(e.pointerId);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+
+    // 触摸设备：在地图空白处轻点关闭气泡框（标记点和气泡框自行处理）
+    const target = e.target as Element | null;
+    const onMarker = !!target?.closest?.('[data-marker]');
+    const onPopup = !!target?.closest?.('[data-popup]');
+    if (wasTracked && e.pointerType !== 'mouse' && !dragMovedRef.current && !pinchStart.current && !onMarker && !onPopup) {
+      setHoveredId(null);
+    }
+
+    if (pointersRef.current.size === 0) {
+      setIsDragging(false);
+      pinchStart.current = null;
+    } else if (pointersRef.current.size === 1) {
+      // 从双指回到单指：重新开始拖拽
+      const [remaining] = Array.from(pointersRef.current.values());
+      pinchStart.current = null;
+      dragStart.current = { x: remaining.x, y: remaining.y, panX, panY };
+      setIsDragging(true);
+    }
+  }, [panX, panY]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const mouseX = (e.clientX - rect.left) / rect.width * svgWidth;
-    const mouseY = (e.clientY - rect.top) / rect.height * svgHeight;
-
-    const offsetX = mouseX - svgWidth / 2 - panX;
-    const offsetY = mouseY - svgHeight / 2 - panY;
-
+    const point = clientToSvg(e.clientX, e.clientY);
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(1.5, Math.min(10, zoom * delta));
-
+    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * delta));
     if (newZoom === zoom) return;
+    zoomAround(point, newZoom, zoom, panX, panY);
+  }, [zoom, panX, panY, clientToSvg, zoomAround]);
 
-    const zoomRatio = newZoom / zoom;
+  // 将中国居中到指定缩放级别
+  const focusChina = useCallback((newZoom: number) => {
+    // 注意：projection 已经包含了当前的 panX/panY，需要重新计算
+    const tempProjection = geoNaturalEarth1()
+      .scale(baseScale * newZoom)
+      .rotate([-150, 0, 0])
+      .translate([svgWidth / 2, svgHeight / 2]);
 
-    let newPanX = panX - offsetX * (zoomRatio - 1);
-    let newPanY = panY - offsetY * (zoomRatio - 1);
+    const chinaCenterNew = tempProjection([105, 35]);
+    if (!chinaCenterNew) return;
 
-    const clamped = clampPan(newPanX, newPanY, newZoom);
-
+    // 计算偏移量使中国居中
     setZoom(newZoom);
-    setPanX(clamped.x);
-    setPanY(clamped.y);
-  }, [zoom, panX, panY, clampPan]);
+    setPanX(svgWidth / 2 - chinaCenterNew[0]);
+    setPanY(svgHeight / 2 - chinaCenterNew[1]);
+  }, [baseScale]);
 
   const handleChinaClick = useCallback(() => {
     if (zoom > 2.5) return;
-    
-    const newZoom = 5.5;
-    // 计算需要的 pan 值使中国居中
-    // 注意：projection 已经包含了当前的 panX/panY，需要重新计算
-    const tempProjection = geoNaturalEarth1()
-      .scale(baseScale * newZoom)
-      .rotate([-150, 0, 0])
-      .translate([svgWidth / 2, svgHeight / 2]);
-    
-    const chinaCenterNew = tempProjection([105, 35]);
-    if (!chinaCenterNew) return;
-    
-    // 计算偏移量使中国居中
-    const offsetX = svgWidth / 2 - chinaCenterNew[0];
-    const offsetY = svgHeight / 2 - chinaCenterNew[1];
-    
-    setZoom(newZoom);
-    setPanX(offsetX);
-    setPanY(offsetY);
-  }, [zoom, baseScale]);
+    focusChina(5.5);
+  }, [zoom, focusChina]);
 
   const handleChinaView = useCallback(() => {
-    const newZoom = 7; // 放大更多
-    // 计算需要的 pan 值使中国居中
-    // 注意：projection 已经包含了当前的 panX/panY，需要重新计算
-    const tempProjection = geoNaturalEarth1()
-      .scale(baseScale * newZoom)
-      .rotate([-150, 0, 0])
-      .translate([svgWidth / 2, svgHeight / 2]);
-    
-    const chinaCenterNew = tempProjection([105, 35]);
-    if (!chinaCenterNew) return;
-    
-    // 计算偏移量使中国居中
-    const offsetX = svgWidth / 2 - chinaCenterNew[0];
-    const offsetY = svgHeight / 2 - chinaCenterNew[1];
-    
-    setZoom(newZoom);
-    setPanX(offsetX);
-    setPanY(offsetY);
-  }, [baseScale]);
+    focusChina(7);
+  }, [focusChina]);
 
   const handleResetView = useCallback(() => {
     setZoom(1.8);
@@ -312,90 +415,7 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
     setPanY(0);
   }, []);
 
-  // 计算气泡框最佳位置
-  // 核心原则：气泡框的某个角/边锚点紧贴标记点，保持固定间距，绝不遮挡
-  const calculatePopupPosition = useCallback((markerX: number, markerY: number, popupWidth: number, popupHeight: number) => {
-    // 动态间距：随缩放调整，确保视觉上间距一致
-    const baseGap = 8;
-    const gap = baseGap * Math.sqrt(zoom);
-    
-    // 定义8个锚点方案：[气泡框x, 气泡框y, 描述]
-    // 每个方案确保气泡框不会遮挡标记点
-    const anchors = [
-      // 四个角落（优先）
-      { x: markerX + gap, y: markerY + gap, name: 'bottom-right' },  // 气泡框在标记点右下
-      { x: markerX + gap, y: markerY - gap - popupHeight, name: 'top-right' },  // 气泡框在标记点右上
-      { x: markerX - gap - popupWidth, y: markerY + gap, name: 'bottom-left' },  // 气泡框在标记点左下
-      { x: markerX - gap - popupWidth, y: markerY - gap - popupHeight, name: 'top-left' },  // 气泡框在标记点左上
-      // 四个边（备选）
-      { x: markerX + gap, y: markerY - popupHeight / 2, name: 'right' },  // 气泡框在标记点右侧
-      { x: markerX - gap - popupWidth, y: markerY - popupHeight / 2, name: 'left' },  // 气泡框在标记点左侧
-      { x: markerX - popupWidth / 2, y: markerY + gap, name: 'bottom' },  // 气泡框在标记点下方
-      { x: markerX - popupWidth / 2, y: markerY - gap - popupHeight, name: 'top' },  // 气泡框在标记点上方
-    ];
-    
-    // 根据标记点位置确定优先顺序
-    const inLeftHalf = markerX < svgWidth / 2;
-    const inTopHalf = markerY < svgHeight / 2;
-    
-    // 重新排序：优先选择对角方向
-    let priorityOrder: number[];
-    if (inLeftHalf && inTopHalf) {
-      // 标记点在左上 → 优先右下
-      priorityOrder = [0, 4, 1, 6, 2, 3, 5, 7];
-    } else if (!inLeftHalf && inTopHalf) {
-      // 标记点在右上 → 优先左下
-      priorityOrder = [2, 5, 3, 6, 0, 1, 4, 7];
-    } else if (inLeftHalf && !inTopHalf) {
-      // 标记点在左下 → 优先右上
-      priorityOrder = [1, 4, 0, 7, 2, 3, 5, 6];
-    } else {
-      // 标记点在右下 → 优先左上
-      priorityOrder = [3, 5, 2, 7, 0, 1, 4, 6];
-    }
-    
-    // 按优先顺序检查每个锚点，选择第一个完全在视窗内的
-    for (const idx of priorityOrder) {
-      const anchor = anchors[idx];
-      const x = anchor.x;
-      const y = anchor.y;
-      
-      // 检查是否完全在视窗内
-      if (x >= 0 && x + popupWidth <= svgWidth && y >= 0 && y + popupHeight <= svgHeight) {
-        return { x, y };
-      }
-    }
-    
-    // 如果所有锚点都超出视窗，选择第一优先的锚点并约束在视窗内
-    // 但要确保不遮挡标记点
-    const fallback = anchors[priorityOrder[0]];
-    let x = Math.max(0, Math.min(svgWidth - popupWidth, fallback.x));
-    let y = Math.max(0, Math.min(svgHeight - popupHeight, fallback.y));
-    
-    // 检查是否遮挡标记点，如果遮挡则微调
-    const overlapsX = x < markerX + 15 && x + popupWidth > markerX - 15;
-    const overlapsY = y < markerY + 15 && y + popupHeight > markerY - 15;
-    
-    if (overlapsX && overlapsY) {
-      // 遮挡了，尝试推开
-      if (inLeftHalf) {
-        x = Math.min(markerX + gap, svgWidth - popupWidth);
-      } else {
-        x = Math.max(0, markerX - gap - popupWidth);
-      }
-    }
-    
-    return { x, y };
-  }, [svgWidth, svgHeight, zoom]);
-
-  // 处理 hover 变化，重置动画
-  useEffect(() => {
-    if (hoveredId) {
-      setPopupKey(prev => prev + 1);
-    }
-  }, [hoveredId]);
-
-  if (!mounted || !worldGeo) {
+  if (!worldGeo) {
     return (
       <div className="w-full bg-[#0a0a0a] rounded-xl h-[820px] flex items-center justify-center">
         <span className="text-gray-600">加载地图中...</span>
@@ -409,16 +429,78 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
   // 获取当前 hover 的地区数据
   const hoveredRegion = hoveredId ? regions.find(r => r.id === hoveredId) : null;
 
+  // 计算气泡框位置（8 方向锚点，优先四角，其次四边，最后边界约束）
+  const computePopupPosition = (): { x: number; y: number } | null => {
+    if (!hoveredRegion || !hoveredId || containerSize.width === 0) return null;
+    const location = locations.find(l => l.id === hoveredId);
+    if (!location) return null;
+
+    const coords = resolveCoordinates(location, chinaGeo);
+    if (!coords) return null;
+    const projected = projection(coords);
+    if (!projected) return null;
+
+    // SVG 坐标 → 容器像素坐标
+    const [svgX, svgY] = projected;
+    const W = containerSize.width;
+    const H = containerSize.height;
+    const markerX = svgX * (W / svgWidth);
+    const markerY = svgY * (H / svgHeight);
+
+    const popupW = popupSize.width;
+    const popupH = popupSize.height;
+
+    // 动态间距
+    const gap = 10 * Math.sqrt(zoom);
+
+    // 1. 标记点到容器四边的空间
+    const spaceRight = W - markerX;
+    const spaceLeft = markerX;
+    const spaceBottom = H - markerY;
+    const spaceTop = markerY;
+
+    // 2. 8 个方向候选位置
+    const candidates: Array<{ x: number; y: number; needRight?: number; needLeft?: number; needTop?: number; needBottom?: number }> = [
+      // 四角（优先）
+      { x: markerX + gap, y: markerY + gap, needRight: popupW + gap, needBottom: popupH + gap },
+      { x: markerX + gap, y: markerY - gap - popupH, needRight: popupW + gap, needTop: popupH + gap },
+      { x: markerX - gap - popupW, y: markerY + gap, needLeft: popupW + gap, needBottom: popupH + gap },
+      { x: markerX - gap - popupW, y: markerY - gap - popupH, needLeft: popupW + gap, needTop: popupH + gap },
+      // 四边（备选）
+      { x: markerX + gap, y: markerY - popupH / 2, needRight: popupW + gap, needTop: popupH / 2, needBottom: popupH / 2 },
+      { x: markerX - gap - popupW, y: markerY - popupH / 2, needLeft: popupW + gap, needTop: popupH / 2, needBottom: popupH / 2 },
+      { x: markerX - popupW / 2, y: markerY + gap, needLeft: popupW / 2, needRight: popupW / 2, needBottom: popupH + gap },
+      { x: markerX - popupW / 2, y: markerY - gap - popupH, needLeft: popupW / 2, needRight: popupW / 2, needTop: popupH + gap },
+    ];
+
+    // 3. 选择第一个能完整放下气泡框的方向
+    const chosen = candidates.find(c =>
+      (c.needRight === undefined || spaceRight >= c.needRight) &&
+      (c.needLeft === undefined || spaceLeft >= c.needLeft) &&
+      (c.needBottom === undefined || spaceBottom >= c.needBottom) &&
+      (c.needTop === undefined || spaceTop >= c.needTop)
+    ) ?? candidates[0];
+
+    // 4. 边界约束保底
+    return {
+      x: Math.max(5, Math.min(W - popupW - 5, chosen.x)),
+      y: Math.max(5, Math.min(H - popupH - 5, chosen.y)),
+    };
+  };
+
+  const popupPosition = computePopupPosition();
+  const hasMultipleAlbums = !!hoveredRegion && hoveredRegion.albums.length > 1;
+
   return (
     <div className="w-full bg-[#0a0a0a] rounded-xl overflow-hidden">
       <div
         ref={containerRef}
         className="relative select-none"
-        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        style={{ cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onWheel={handleWheel}
       >
         <svg
@@ -428,10 +510,8 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
           style={{ background: DARK_BG }}
         >
           {/* 世界地图 */}
-          {worldGeo.features.map((feature: Feature, index: number) => {
-            const props = feature.properties as any;
-            const countryName = props?.name;
-            console.log('Country:', countryName, '-> mapped:', countryNameToCode[countryName], 'isVisited:', countryNameToCode[countryName] ? visitedCountriesSet.has(countryNameToCode[countryName]) : false);
+          {worldGeo.features.map((feature, index) => {
+            const countryName = feature.properties?.name ?? '';
             const isChina = countryName === 'China';
 
             const mappedCode = countryNameToCode[countryName];
@@ -445,7 +525,7 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
               return (
                 <path
                   key={`world-${index}`}
-                  d={pathGenerator(feature as Feature<Geometry>) || ''}
+                  d={pathGenerator(feature) || ''}
                   fill={UNVISITED_FILL}
                   stroke='#60a5fa'
                   strokeWidth={chinaStrokeWidth}
@@ -464,7 +544,7 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
             return (
               <path
                 key={`world-${index}`}
-                d={pathGenerator(feature as Feature<Geometry>) || ''}
+                d={pathGenerator(feature) || ''}
                 fill={isVisited ? VISITED_FILL : UNVISITED_FILL}
                 stroke={isVisited ? VISITED_STROKE : UNVISITED_STROKE}
                 strokeWidth={strokeWidth}
@@ -476,17 +556,16 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
           })}
 
           {/* 中国省份 */}
-          {chinaGeo?.features.map((feature: Feature, index: number) => {
-            const props = feature.properties as any;
-            const adcode = props?.adcode;
-            const isVisited = visitedProvincesSet.has(adcode);
+          {chinaGeo?.features.map((feature, index) => {
+            const adcode = feature.properties?.adcode;
+            const isVisited = adcode !== undefined && visitedProvincesSet.has(adcode);
 
             return (
               <path
                 key={`china-prov-${adcode || index}`}
-                d={pathGenerator(feature as Feature<Geometry>) || ''}
+                d={pathGenerator(feature) || ''}
                 fill={isVisited ? VISITED_FILL : UNVISITED_FILL}
-                stroke={'#3a4a70'}
+                stroke={CHINA_PROVINCE_STROKE}
                 strokeWidth={strokeWidth}
                 style={{
                   filter: isVisited ? 'drop-shadow(0 0 8px rgba(251, 191, 36, 0.5))' : 'none',
@@ -502,18 +581,8 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
 
           {/* 标记点 */}
           {locations.map((location) => {
-            let coords = location.coordinates;
-            const adcode = mapCodeToAdcode(location.mapCode);
-            if (adcode && chinaGeo) {
-              const provinceFeature = chinaGeo.features.find(
-                f => f.properties?.adcode === adcode
-              );
-              if (provinceFeature) {
-                const centroid = geoCentroid(provinceFeature as Feature<Geometry>);
-                coords = centroid as [number, number];
-              }
-            }
-            
+            const coords = resolveCoordinates(location, chinaGeo);
+            if (!coords) return null;
             const projected = projection(coords);
             if (!projected) return null;
 
@@ -529,9 +598,11 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
             return (
               <g
                 key={`marker-${location.id}`}
+                data-marker={location.id}
                 transform={`translate(${x}, ${y})`}
-                onMouseEnter={() => handleMouseEnterMarker(location.id)}
-                onMouseLeave={handleMouseLeaveMarker}
+                onPointerEnter={(e) => handleMouseEnterMarker(e, location.id)}
+                onPointerLeave={handleMouseLeaveMarker}
+                onClick={(e) => handleMarkerClick(e, location.id)}
                 style={{ cursor: 'pointer' }}
               >
                 <circle r={isHovered ? haloSize * 1.5 : haloSize} fill="#f59e0b" opacity={isHovered ? 0.4 : 0.25} />
@@ -541,185 +612,91 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
           })}
         </svg>
 
-        {/* Hover 气泡框 */}
-        {hoveredRegion && hoveredId && containerRef.current && (() => {
-          const location = locations.find(l => l.id === hoveredId);
-          if (!location) return null;
+        {/* Hover / 点击 气泡框 */}
+        {hoveredRegion && popupPosition && (
+          <div
+            key={hoveredId}
+            ref={popupRef}
+            data-popup
+            className="absolute pointer-events-auto animate-popup"
+            style={{
+              left: `${popupPosition.x}px`,
+              top: `${popupPosition.y}px`,
+            }}
+            onPointerEnter={handleMouseEnterPopup}
+            onPointerLeave={handleMouseLeavePopup}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="bg-black/80 backdrop-blur-xl rounded-xl border border-amber-500/50 shadow-2xl p-6 min-w-[420px] max-w-[630px]"
+                 style={{ boxShadow: '0 0 20px rgba(234, 88, 12, 0.3)' }}>
+              <div className="flex items-baseline justify-between mb-4">
+                <h3 className="text-xl font-semibold text-white">{hoveredRegion.name[locale]}</h3>
+                <span className="text-xs text-gray-400">
+                  {hoveredRegion.albums.length} {locale === 'zh' ? '个相册' : 'albums'} · {hoveredRegion.albums.reduce((sum, album) => sum + (album.photos?.length || 0), 0)} {locale === 'zh' ? '张' : 'photos'}
+                </span>
+              </div>
 
-          let coords = location.coordinates;
-          const adcode = mapCodeToAdcode(location.mapCode);
-          if (adcode && chinaGeo) {
-            const provinceFeature = chinaGeo.features.find(
-              f => f.properties?.adcode === adcode
-            );
-            if (provinceFeature) {
-              const centroid = geoCentroid(provinceFeature as Feature<Geometry>);
-              coords = centroid as [number, number];
-            }
-          }
-
-          const projected = projection(coords);
-          if (!projected) return null;
-
-          // SVG 坐标
-          const [svgX, svgY] = projected;
-          
-          // 获取容器实际尺寸，计算缩放比例
-          const containerRect = containerRef.current.getBoundingClientRect();
-          const scaleX = containerRect.width / svgWidth;
-          const scaleY = containerRect.height / svgHeight;
-          
-          // 转换为实际像素坐标
-          const markerX = svgX * scaleX;
-          const markerY = svgY * scaleY;
-          const W = containerRect.width;  // 容器宽度
-          const H = containerRect.height; // 容器高度
-          
-          const hasMultipleAlbums = hoveredRegion.albums.length > 1;
-          
-          // 气泡框尺寸（像素）- 必须和实际 CSS 保持一致！
-          // 宽度：min-w-[420px]
-          const popupW = 420;
-          // 高度：
-          // - 多相册（3个相册，3列1行）：标题(60) + 1行图片(约140) + 按钮(40) + padding(48) = 288
-          // - 单相册（6张照片，3列2行）：标题(60) + 2行图片(约280) + 按钮(40) + padding(48) = 428
-          const popupH = hasMultipleAlbums ? 288 : 428;
-          
-          // 动态间距
-          const gap = 10 * Math.sqrt(zoom);
-          
-          // ========== v9 核心逻辑 ==========
-          // 1. 计算标记点到容器四边的空间
-          const spaceRight = W - markerX;
-          const spaceLeft = markerX;
-          const spaceBottom = H - markerY;
-          const spaceTop = markerY;
-          
-          // 2. 定义 8 个方向候选位置
-          const candidates = [
-            // 四角（优先）
-            { name: 'bottom-right', x: markerX + gap, y: markerY + gap, needRight: popupW + gap, needBottom: popupH + gap },
-            { name: 'top-right', x: markerX + gap, y: markerY - gap - popupH, needRight: popupW + gap, needTop: popupH + gap },
-            { name: 'bottom-left', x: markerX - gap - popupW, y: markerY + gap, needLeft: popupW + gap, needBottom: popupH + gap },
-            { name: 'top-left', x: markerX - gap - popupW, y: markerY - gap - popupH, needLeft: popupW + gap, needTop: popupH + gap },
-            // 四边（备选）
-            { name: 'right', x: markerX + gap, y: markerY - popupH / 2, needRight: popupW + gap, needTop: popupH / 2, needBottom: popupH / 2 },
-            { name: 'left', x: markerX - gap - popupW, y: markerY - popupH / 2, needLeft: popupW + gap, needTop: popupH / 2, needBottom: popupH / 2 },
-            { name: 'bottom', x: markerX - popupW / 2, y: markerY + gap, needLeft: popupW / 2, needRight: popupW / 2, needBottom: popupH + gap },
-            { name: 'top', x: markerX - popupW / 2, y: markerY - gap - popupH, needLeft: popupW / 2, needRight: popupW / 2, needTop: popupH + gap },
-          ];
-          
-          // 3. 每个方向判断是否能完整放下气泡框
-          // 4. 选择第一个有效方向
-          let chosen = candidates[0]; // 默认右下
-          
-          for (const c of candidates) {
-            const fits = 
-              (c.needRight === undefined || spaceRight >= c.needRight) &&
-              (c.needLeft === undefined || spaceLeft >= c.needLeft) &&
-              (c.needBottom === undefined || spaceBottom >= c.needBottom) &&
-              (c.needTop === undefined || spaceTop >= c.needTop);
-            
-            if (fits) {
-              chosen = c;
-              break;
-            }
-          }
-          
-          // 5. 边界约束保底
-          let x = Math.max(5, Math.min(W - popupW - 5, chosen.x));
-          let y = Math.max(5, Math.min(H - popupH - 5, chosen.y));
-
-          return (
-            <div
-              key={popupKey}
-              className="absolute pointer-events-auto animate-popup"
-              style={{
-                left: `${x}px`,
-                top: `${y}px`,
-              }}
-              onMouseEnter={handleMouseEnterPopup}
-              onMouseLeave={handleMouseLeavePopup}
-            >
-              <div className="bg-black/80 backdrop-blur-xl rounded-xl border border-amber-500/50 shadow-2xl p-6 min-w-[420px] max-w-[630px]"
-                   style={{ boxShadow: '0 0 20px rgba(234, 88, 12, 0.3)' }}>
-                <div className="flex items-baseline justify-between mb-4">
-                  <h3 className="text-xl font-semibold text-white">{hoveredRegion.name[locale]}</h3>
-                  <span className="text-xs text-gray-400">
-                    {hoveredRegion.albums.length} {locale === 'zh' ? '个相册' : 'albums'} · {hoveredRegion.albums.reduce((sum, album) => sum + (album.photos?.length || 0), 0)} {locale === 'zh' ? '张' : 'photos'}
-                  </span>
-                </div>
-                
-                {hasMultipleAlbums ? (
-                  <div className="grid grid-cols-3 gap-3 mb-4">
-                    {hoveredRegion.albums.slice(0, 3).map((album) => (
-                      <div
-                        key={album.id}
-                        className="cursor-pointer group"
-                        onClick={() => router.push(`/region/${hoveredRegion.id}/${album.id}`)}
-                      >
-                        <div className="relative aspect-square rounded-lg overflow-hidden mb-2 bg-gray-800">
-                          <Image
-                            src={photoUrl(album.cover)}
-                            alt={album.title[locale]}
-                            fill
-                            className="object-cover group-hover:scale-110 transition-transform duration-300"
-                          />
-                        </div>
-                        <p className="text-sm text-gray-300 group-hover:text-amber-400 transition-colors line-clamp-1">
-                          {album.title[locale]}
-                        </p>
-                        <p className="text-xs text-gray-500">{album.photos?.length || 0} {locale === 'zh' ? '张' : 'photos'}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  hoveredRegion.albums[0].photos ? (
-                  <div className="grid grid-cols-3 gap-3 mb-4">
-                    {hoveredRegion.albums[0].photos.slice(0, 6).map((photo, idx) => (
-                      <div
-                        key={photo.id}
-                        className="relative aspect-square rounded-lg overflow-hidden cursor-pointer group bg-gray-800"
-                        onClick={() => {
-                          // 跳转到相册页面并打开该图片的灯箱
-                          router.push(`/region/${hoveredRegion.id}?photo=${idx}`);
-                        }}
-                      >
+              {hasMultipleAlbums ? (
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  {hoveredRegion.albums.slice(0, 3).map((album) => (
+                    <div
+                      key={album.id}
+                      className="cursor-pointer group"
+                      onClick={() => router.push(`/region/${hoveredRegion.id}/${album.id}`)}
+                    >
+                      <div className="relative aspect-square rounded-lg overflow-hidden mb-2 bg-gray-800">
                         <Image
-                          src={photoUrl(photo.thumbnail)}
-                          alt={photo.title?.[locale] || ''}
+                          src={photoUrl(album.cover)}
+                          alt={album.title[locale]}
                           fill
                           className="object-cover group-hover:scale-110 transition-transform duration-300"
                         />
                       </div>
-                    ))}
-                  </div>
-                  ) : hoveredRegion.albums.length > 0 ? (
-                    <div className="text-center text-gray-500 py-6 mb-4">
-                      {(hoveredRegion.albums[0].photos as Photo[] | undefined)?.length || 0} {locale === 'zh' ? '张照片' : 'photos'}
+                      <p className="text-sm text-gray-300 group-hover:text-amber-400 transition-colors line-clamp-1">
+                        {album.title[locale]}
+                      </p>
+                      <p className="text-xs text-gray-500">{album.photos?.length || 0} {locale === 'zh' ? '张' : 'photos'}</p>
                     </div>
-                  ) : null
-                )}
-                
-                {/* 查看全部按钮 */}
-                <button
-                  onClick={() => {
-                    if (hasMultipleAlbums) {
-                      // 多相册：进入相册列表
-                      router.push(`/region/${hoveredRegion.id}`);
-                    } else {
-                      // 单相册：进入瀑布流
-                      router.push(`/region/${hoveredRegion.id}`);
-                    }
-                  }}
-                  className="w-full py-1.5 px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 hover:text-amber-300 rounded-lg text-xs font-medium transition-all duration-200 border border-amber-500/30 hover:border-amber-500/50"
-                >
-                  {locale === 'zh' ? '查看全部 →' : 'View All →'}
-                </button>
-              </div>
+                  ))}
+                </div>
+              ) : (
+                hoveredRegion.albums[0].photos ? (
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  {hoveredRegion.albums[0].photos.slice(0, 6).map((photo, idx) => (
+                    <div
+                      key={photo.id}
+                      className="relative aspect-square rounded-lg overflow-hidden cursor-pointer group bg-gray-800"
+                      onClick={() => {
+                        // 跳转到相册页面并打开该图片的灯箱
+                        router.push(`/region/${hoveredRegion.id}?photo=${idx}`);
+                      }}
+                    >
+                      <Image
+                        src={photoUrl(photo.thumbnail)}
+                        alt={photo.title?.[locale] || ''}
+                        fill
+                        className="object-cover group-hover:scale-110 transition-transform duration-300"
+                      />
+                    </div>
+                  ))}
+                </div>
+                ) : hoveredRegion.albums.length > 0 ? (
+                  <div className="text-center text-gray-500 py-6 mb-4">
+                    {(hoveredRegion.albums[0].photos as Photo[] | undefined)?.length || 0} {locale === 'zh' ? '张照片' : 'photos'}
+                  </div>
+                ) : null
+              )}
+
+              {/* 查看全部按钮 */}
+              <button
+                onClick={() => router.push(`/region/${hoveredRegion.id}`)}
+                className="w-full py-1.5 px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 hover:text-amber-300 rounded-lg text-xs font-medium transition-all duration-200 border border-amber-500/30 hover:border-amber-500/50"
+              >
+                {locale === 'zh' ? '查看全部 →' : 'View All →'}
+              </button>
             </div>
-          );
-        })()}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-center gap-4 py-3 bg-[#0a0a0a] border-t border-gray-800">
@@ -738,7 +715,7 @@ export default function WorldMap({ locations, onLocationClick, locale, visitedPr
         </button>
         <span className="text-gray-700">|</span>
         <span className="text-xs text-gray-600">
-          {locale === 'zh' ? '滚轮缩放 · 拖拽移动' : 'Scroll to zoom · Drag to pan'}
+          {locale === 'zh' ? '滚轮 / 双指缩放 · 拖拽移动' : 'Scroll or pinch to zoom · Drag to pan'}
         </span>
       </div>
 
