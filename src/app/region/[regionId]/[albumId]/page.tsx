@@ -15,6 +15,7 @@ export default function AlbumPage() {
   const searchParams = useSearchParams();
   const photoParam = searchParams.get('photo');
   const initialPhotoIndex = photoParam !== null ? parseInt(photoParam, 10) : null;
+  const closeTo = searchParams.get('from') === 'home' ? '/' : null;
   const { locale } = useLocale();
   const region = regions.find(r => r.id === regionId);
   const album = region?.albums.find(a => a.id === albumId);
@@ -59,6 +60,7 @@ export default function AlbumPage() {
           initialPhotoIndex={initialPhotoIndex}
           regionId={regionId}
           albumId={albumId}
+          closeTo={closeTo}
         />
       </main>
 

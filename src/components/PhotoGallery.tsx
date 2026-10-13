@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Photo } from '@/lib/types';
 import PhotoLightbox from '@/components/PhotoLightbox';
@@ -16,6 +17,8 @@ interface PhotoGalleryProps {
   /** 用于点赞 target 与 URL 定位 */
   regionId: string;
   albumId: string;
+  /** 从别处（如首页照片流）直接进入大图时，关闭大图要回到的路径 */
+  closeTo?: string | null;
 }
 
 // 与 CSS 的 md:columns-3 断点保持一致
@@ -28,7 +31,8 @@ const subscribeColumns = (cb: () => void) => {
 const getColumns = () => (window.matchMedia(COLUMNS_QUERY).matches ? 3 : 2);
 const getServerColumns = () => 3;
 
-export default function PhotoGallery({ photos, locale, title, initialPhotoIndex = null, regionId, albumId }: PhotoGalleryProps) {
+export default function PhotoGallery({ photos, locale, title, initialPhotoIndex = null, regionId, albumId, closeTo = null }: PhotoGalleryProps) {
+  const router = useRouter();
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(initialPhotoIndex);
   // 列数跟随断点变化（旋转屏幕、缩放窗口）
   const cols = useSyncExternalStore(subscribeColumns, getColumns, getServerColumns);
@@ -46,12 +50,17 @@ export default function PhotoGallery({ photos, locale, title, initialPhotoIndex 
 
   // 灯箱打开时把 ?photo=N 写进 URL，方便分享定位到具体照片
   const openLightbox = useCallback((index: number | null) => {
+    if (index === null && closeTo) {
+      // 从首页照片流进来的：关闭即返回首页
+      router.push(closeTo);
+      return;
+    }
     setLightboxIndex(index);
     const url = new URL(window.location.href);
     if (index === null) url.searchParams.delete('photo');
     else url.searchParams.set('photo', String(index));
     window.history.replaceState(window.history.state, '', url);
-  }, []);
+  }, [closeTo, router]);
 
   // 🎯 贪心预排序：把照片按列高均衡分配，再按列顺序交给 CSS columns
   const reorderedPhotos = useMemo(() => {

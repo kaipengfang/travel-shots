@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Photo } from '@/lib/types';
 import { photoUrl } from '@/lib/photoUrl';
@@ -16,6 +16,10 @@ interface PhotoLightboxProps {
   likeTarget?: (photo: Photo) => string;
 }
 
+// 服务端渲染时为 false，客户端挂载后为 true；避免 SSR 与首屏 hydration 不一致
+const subscribeNoop = () => () => {};
+const useIsClient = () => useSyncExternalStore(subscribeNoop, () => true, () => false);
+
 export default function PhotoLightbox({
   photos,
   currentIndex,
@@ -25,6 +29,7 @@ export default function PhotoLightbox({
   likeTarget
 }: PhotoLightboxProps) {
   const photo = photos[currentIndex];
+  const isClient = useIsClient();
   
   const goNext = useCallback(() => {
     if (currentIndex < photos.length - 1) {
@@ -215,7 +220,7 @@ export default function PhotoLightbox({
     </div>
   );
 
-  // 使用 Portal 渲染到 body，避免父元素 transform 影响 fixed 定位；SSR 时不渲染
-  if (typeof document === 'undefined') return null;
+  // 使用 Portal 渲染到 body，避免父元素 transform 影响 fixed 定位；SSR 与首次 hydration 时不渲染
+  if (!isClient) return null;
   return createPortal(lightboxContent, document.body);
 }

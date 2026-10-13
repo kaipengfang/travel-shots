@@ -18,6 +18,7 @@ export default function RegionPage() {
   // 读取 URL 参数 ?photo=N
   const photoParam = searchParams.get('photo');
   const initialPhotoIndex = photoParam !== null ? parseInt(photoParam, 10) : null;
+  const closeTo = searchParams.get('from') === 'home' ? '/' : null;
 
   const region = regions.find(r => r.id === regionId);
 
@@ -73,6 +74,7 @@ export default function RegionPage() {
               initialPhotoIndex={initialPhotoIndex}
               regionId={regionId}
               albumId={region.albums[0]?.id || ''}
+              closeTo={closeTo}
             />
           </>
         )}

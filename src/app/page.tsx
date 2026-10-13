@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useLocale } from '@/components/LocaleProvider';
+import PhotoRiver from '@/components/PhotoRiver';
 import { mapLocations, visitedCountryCount, siteConfig } from '@/data';
 
 const GlobeMap = dynamic(() => import('@/components/GlobeMap'), {
@@ -39,6 +40,10 @@ export default function Home() {
         <section>
           <GlobeMap locale={locale} />
         </section>
+
+        <div className="mt-6 md:mt-10">
+          <PhotoRiver locale={locale} />
+        </div>
 
         <p className="text-center text-zinc-400 text-sm italic">
           {locale === 'zh' ? siteConfig.motto.zh : siteConfig.motto.en}
