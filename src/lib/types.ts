@@ -40,6 +40,8 @@ export interface Album {
   };
   cover: string;
   date: string;
+  /** 可选：手动指定用于缩略展示的照片 id（通常 3 张），不填则自动挑选 */
+  highlights?: string[];
   photos: Photo[];
 }
 

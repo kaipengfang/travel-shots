@@ -19,14 +19,19 @@ export async function GET(request: NextRequest) {
 
   const ipHash = hashIp(getClientIp(request));
 
-  const { data, error } = await supabase
-    .from('likes')
-    .select('target_id, ip_hash')
-    .in('target_id', targets);
+  let data: { target_id: string; ip_hash: string }[] | null = null;
+  let error: { message: string } | null = null;
+  try {
+    ({ data, error } = await supabase.from('likes').select('target_id, ip_hash').in('target_id', targets));
+  } catch (e) {
+    error = { message: e instanceof Error ? e.message : String(e) };
+  }
 
   if (error) {
-    console.error('likes GET failed:', error.message);
-    return NextResponse.json({ success: false, error: 'server error' }, { status: 500 });
+    // 表未创建或 Supabase 不可达：前端会隐藏爱心，这里不当作错误报警
+    console.warn('likes unavailable:', error.message);
+    // 用 200 返回，避免浏览器把它记成资源加载错误
+    return NextResponse.json({ success: false, error: 'likes unavailable' });
   }
 
   const counts: Record<string, number> = {};

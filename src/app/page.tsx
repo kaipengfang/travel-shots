@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useLocale } from '@/components/LocaleProvider';
@@ -36,6 +37,11 @@ export default function Home() {
               ? `${visitedCountryCount} 个国家 · ${mapLocations.length} 个地区 · ${totalPhotos} 张照片`
               : `${visitedCountryCount} countries · ${mapLocations.length} regions · ${totalPhotos} photos`
             }
+          </p>
+          <p className="text-center mt-1">
+            <Link href="/globe" className="text-xs text-zinc-600 hover:text-amber-400 transition-colors">
+              {locale === 'zh' ? '试试 3D 地球版 →' : 'Try the 3D globe →'}
+            </Link>
           </p>
         </section>
 

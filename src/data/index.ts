@@ -36,7 +36,7 @@ export const visitedCountries: string[] = [
 ];
 
 // 已访问的中国省份（mapCode 以 "CN-" 开头的，转为 adcode）
-const provinceAdcodeMap: Record<string, number> = {
+export const provinceAdcodeMap: Record<string, number> = {
   'CN-11': 110000, 'CN-12': 120000, 'CN-13': 130000, 'CN-14': 140000, 'CN-15': 150000,
   'CN-21': 210000, 'CN-22': 220000, 'CN-23': 230000,
   'CN-31': 310000, 'CN-32': 320000, 'CN-33': 330000, 'CN-34': 340000, 'CN-35': 350000,
