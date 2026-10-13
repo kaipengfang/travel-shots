@@ -69,9 +69,11 @@ function applyLabelZooms(map: maplibregl.Map) {
   }
 }
 
-/** 缩放范围：2 是默认的整球视角，9 已到城市街区级，再放大没有意义 */
+/** 缩放范围：桌面 2 是整球视角；窄屏地球更小，允许到 1.2 才能看全。9 已到城市街区级 */
 const MIN_ZOOM = 2;
+const MIN_ZOOM_NARROW = 1.2;
 const MAX_ZOOM = 9;
+const NARROW_INITIAL_ZOOM = 1.35;
 
 /** 离开页面前记住视角，从相册返回时恢复到同样的位置和缩放 */
 const VIEW_STORAGE_KEY = 'globe_view';
@@ -154,6 +156,7 @@ export default function GlobeMap({ locale }: GlobeMapProps) {
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   const [zoomLevel, setZoomLevel] = useState(WORLD_VIEW.zoom);
+  const [minZoom, setMinZoom] = useState(MIN_ZOOM);
   const userInteractedRef = useRef<(() => void) | null>(null);
   const updateAnchorRef = useRef<(() => void) | null>(null);
   const [usedFallbackStyle, setUsedFallbackStyle] = useState(false);
@@ -181,16 +184,19 @@ export default function GlobeMap({ locale }: GlobeMapProps) {
       if (cancelled || !containerRef.current) return;
 
       const saved = loadSavedView();
+      const narrow = containerRef.current.clientWidth < WIDE_BREAKPOINT;
+      const effectiveMin = narrow ? MIN_ZOOM_NARROW : MIN_ZOOM;
+      setMinZoom(effectiveMin);
       const map = new maplibregl.Map({
         container: containerRef.current,
         style,
         center: saved?.center ?? WORLD_VIEW.center,
-        zoom: saved?.zoom ?? WORLD_VIEW.zoom,
+        zoom: saved?.zoom ?? (narrow ? NARROW_INITIAL_ZOOM : WORLD_VIEW.zoom),
         bearing: saved?.bearing ?? 0,
         pitch: saved?.pitch ?? 0,
         attributionControl: { compact: true },
         canvasContextAttributes: { antialias: true },
-        minZoom: MIN_ZOOM,
+        minZoom: effectiveMin,
         maxZoom: MAX_ZOOM,
       });
       mapRef.current = map;
@@ -504,14 +510,15 @@ export default function GlobeMap({ locale }: GlobeMapProps) {
     const map = mapRef.current;
     if (!map) return;
     userInteractedRef.current?.();
-    const target = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, map.getZoom() + (z - zoomLevel)));
+    const target = Math.max(minZoom, Math.min(MAX_ZOOM, map.getZoom() + (z - zoomLevel)));
     map.jumpTo({ zoom: target });
     setZoomLevel(z);
   };
 
   const goWorld = () => {
     setActiveRegion(null);
-    mapRef.current?.flyTo({ ...WORLD_VIEW, curve: 1.4, speed: 0.8, essential: true });
+    const narrow = (mapRef.current?.getContainer().clientWidth ?? 0) < WIDE_BREAKPOINT;
+    mapRef.current?.flyTo({ ...WORLD_VIEW, zoom: narrow ? NARROW_INITIAL_ZOOM : WORLD_VIEW.zoom, curve: 1.4, speed: 0.8, essential: true });
   };
   const goChina = () => {
     setActiveRegion(null);
@@ -582,7 +589,7 @@ export default function GlobeMap({ locale }: GlobeMapProps) {
         <button type="button" onClick={() => setZoom(Math.min(MAX_ZOOM, zoomLevel + 0.5))} className="globe-zoom-btn" aria-label="Zoom in">+</button>
         <input
           type="range"
-          min={MIN_ZOOM}
+          min={minZoom}
           max={MAX_ZOOM}
           step={0.05}
           value={zoomLevel}
@@ -590,7 +597,7 @@ export default function GlobeMap({ locale }: GlobeMapProps) {
           aria-label="Zoom"
           className="globe-zoom-slider"
         />
-        <button type="button" onClick={() => setZoom(Math.max(MIN_ZOOM, zoomLevel - 0.5))} className="globe-zoom-btn" aria-label="Zoom out">−</button>
+        <button type="button" onClick={() => setZoom(Math.max(minZoom, zoomLevel - 0.5))} className="globe-zoom-btn" aria-label="Zoom out">−</button>
         <span className="globe-zoom-value">{zoomLevel.toFixed(1)}×</span>
       </div>
       {usedFallbackStyle && (
