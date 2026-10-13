@@ -113,7 +113,7 @@ Useful flags: `--dry-run`, `--no-upload` (generate + write JSON only), `--upload
 
 ### With Claude Code: `/add-album`
 
-The repo ships an agent skill at `.claude/skills/add-album/SKILL.md`. Open the project in [Claude Code](https://claude.com/claude-code) and say "add the folder ~/photos/qingdao as a new album": the agent reads EXIF, runs `import-album.mjs`, looks at contact sheets to write a zh/en caption for every photo, picks a cover, uploads to R2, verifies the pages locally and pushes `main`. It reports which place names it guessed so you can correct them.
+The repo ships an agent skill in `.claude/skills/` (`add-album` in Chinese, `add-album-en` in English). Open the project in [Claude Code](https://claude.com/claude-code) and say "add the folder ~/photos/qingdao as a new album": the agent reads EXIF, runs `import-album.mjs`, looks at contact sheets to write a zh/en caption for every photo, picks a cover, uploads to R2, verifies the pages locally and pushes `main`. It reports which place names it guessed so you can correct them.
 
 ### By hand: edit JSON
 
@@ -280,7 +280,7 @@ public/maps/
 ├── world.json              # Natural Earth 110m countries (TopoJSON)
 ├── china.json              # Chinese provinces (GeoJSON, adcode)
 └── extra-countries.json    # Outlines missing from 110m
-.claude/skills/add-album/     # Claude Code skill: full add-album workflow
+.claude/skills/               # Claude Code skills: add-album (zh), add-album-en (en)
 scripts/
 ├── import-album.mjs                # ★ One-command album import
 ├── generate-large.mjs              # Create 2048/3840 WebP for existing albums

@@ -113,7 +113,7 @@ node scripts/import-album.mjs --dir ~/photos/qingdao \
 
 ### 用 Claude Code：`/add-album`
 
-仓库自带一个 agent skill：`.claude/skills/add-album/SKILL.md`。在 [Claude Code](https://claude.com/claude-code) 里打开项目，说"把 ~/photos/qingdao 加成新相册"即可：agent 会读 EXIF、运行 `import-album.mjs`、拼 contact sheet 看图为每张照片写中英 caption、选封面、上传 R2、本地验证页面并推送 `main`，最后汇报哪些地名是推断的，方便你纠正。
+仓库自带 agent skill，位于 `.claude/skills/`（`add-album` 中文版、`add-album-en` 英文版）。在 [Claude Code](https://claude.com/claude-code) 里打开项目，说"把 ~/photos/qingdao 加成新相册"即可：agent 会读 EXIF、运行 `import-album.mjs`、拼 contact sheet 看图为每张照片写中英 caption、选封面、上传 R2、本地验证页面并推送 `main`，最后汇报哪些地名是推断的，方便你纠正。
 
 ### 手动：编辑 JSON
 
@@ -280,7 +280,7 @@ public/maps/
 ├── world.json              # Natural Earth 110m 国家（TopoJSON）
 ├── china.json              # 中国省份（GeoJSON，adcode）
 └── extra-countries.json    # 110m 缺失的小国轮廓
-.claude/skills/add-album/     # Claude Code skill: full add-album workflow
+.claude/skills/               # Claude Code skills：add-album（中文）、add-album-en（英文）
 scripts/
 ├── import-album.mjs                # ★ 一条命令导入相册
 ├── generate-large.mjs              # 为已有相册生成 2048/3840 WebP
