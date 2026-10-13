@@ -2,12 +2,17 @@
 
 export interface Photo {
   id: string;
-  /** 原图（可能很大，仅用于下载/兜底） */
-  src: string;
-  /** 瀑布流缩略图 */
+  /**
+   * 原图路径。只在数据生成阶段使用；一旦生成了 large/xlarge，
+   * 前端数据层会把它剥掉，避免把无水印原片暴露给浏览器。
+   */
+  src?: string;
+  /** 瀑布流缩略图（800px webp） */
   thumbnail: string;
-  /** 灯箱用的中等尺寸图（约 2560px 宽），缺省时回退到 src */
+  /** 灯箱 2048px webp */
   large?: string;
+  /** 灯箱 3840px webp，4K 屏使用 */
+  xlarge?: string;
   title: {
     zh: string;
     en: string;

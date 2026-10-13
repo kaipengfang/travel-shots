@@ -81,7 +81,7 @@ export default function PhotoRiver({ locale }: { locale: 'zh' | 'en' }) {
                     style={{ aspectRatio: `${photo.width} / ${photo.height}` }}
                     tabIndex={copy === 1 ? -1 : 0}
                   >
-                    <img src={photoUrl(photo.thumbnail || photo.src)} alt={photo.title?.[locale] || regionName[locale]} loading="lazy" />
+                    <img src={photoUrl(photo.thumbnail)} alt={photo.title?.[locale] || regionName[locale]} loading="lazy" />
                     <span className="photo-river-caption">
                       <b>{photo.location?.[locale] || regionName[locale]}</b>
                       <i>{fmt(photo.date)}</i>

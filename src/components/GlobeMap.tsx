@@ -570,7 +570,7 @@ export default function GlobeMap({ locale }: GlobeMapProps) {
                 >
                   {pickHighlights(album, 2).map(photo => (
                     <div key={photo.id} className="globe-panel-thumb">
-                      <img src={photoUrl(photo.thumbnail || photo.src)} alt={photo.title?.[locale] || ''} />
+                      <img src={photoUrl(photo.thumbnail)} alt={photo.title?.[locale] || ''} />
                     </div>
                   ))}
                   <div className="globe-panel-caption">

@@ -120,7 +120,7 @@ export default function PhotoGallery({ photos, locale, title, initialPhotoIndex 
           >
             {/* 真实图片 */}
             <Image
-              src={photoUrl(photo.thumbnail || photo.src)}
+              src={photoUrl(photo.thumbnail)}
               alt={photo.title?.[locale] || ''}
               fill
               className="object-cover group-hover:scale-105 transition-transform duration-300"

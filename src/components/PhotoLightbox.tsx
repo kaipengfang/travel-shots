@@ -20,6 +20,20 @@ interface PhotoLightboxProps {
 const subscribeNoop = () => () => {};
 const useIsClient = () => useSyncExternalStore(subscribeNoop, () => true, () => false);
 
+/** 浏览器按屏幕宽度与像素密度在 2048 / 3840 两档间自选 */
+function lightboxSrcSet(photo: Photo): string | undefined {
+  const parts: string[] = [];
+  if (photo.large) parts.push(`${photoUrl(photo.large)} 2048w`);
+  if (photo.xlarge) parts.push(`${photoUrl(photo.xlarge)} 3840w`);
+  return parts.length ? parts.join(', ') : undefined;
+}
+
+/** 预加载时挑一档：高分屏或大窗口用 xlarge */
+function preloadSrc(photo: Photo): string {
+  const needXl = window.innerWidth * window.devicePixelRatio > 2048;
+  return photoUrl((needXl && photo.xlarge) || photo.large || photo.xlarge || photo.src || photo.thumbnail);
+}
+
 export default function PhotoLightbox({
   photos,
   currentIndex,
@@ -72,7 +86,7 @@ export default function PhotoLightbox({
     [photos[currentIndex - 1], photos[currentIndex + 1]].forEach(p => {
       if (!p) return;
       const img = new window.Image();
-      img.src = photoUrl(p.large || p.src);
+      img.src = preloadSrc(p);
     });
   }, [currentIndex, photos]);
 
@@ -141,7 +155,15 @@ export default function PhotoLightbox({
         onTouchEnd={handleTouchEnd}
       >
         <img
-          src={photoUrl(photo.large || photo.src)}
+          src={photoUrl(photo.large || photo.xlarge || photo.src || photo.thumbnail)}
+          srcSet={lightboxSrcSet(photo)}
+          sizes="100vw"
+          onError={(e) => {
+            // 展示图或原图缺失时退回缩略图，避免空白
+            const img = e.currentTarget;
+            const fallback = photoUrl(photo.thumbnail);
+            if (img.src !== fallback) { img.srcset = ''; img.src = fallback; }
+          }}
           alt={photo.title?.[locale] || ''}
           title="© Copyright 2026 途影"
           className="max-w-[95%] max-h-[calc(100vh-200px)] object-contain rounded-lg cursor-context-menu"
