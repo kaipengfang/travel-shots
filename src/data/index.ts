@@ -1,9 +1,18 @@
 import { Region, Album, MapLocation } from '@/lib/types';
 import siteConfig from './config.json';
 
+// webpack / Turbopack 提供的 require.context（@types/node 未声明，这里补充类型）
+interface RegionRequireContext {
+  keys(): string[];
+  (id: string): Region;
+}
+type RequireWithContext = NodeJS.Require & {
+  context(directory: string, useSubdirectories: boolean, regExp: RegExp): RegionRequireContext;
+};
+
 // 自动扫描 regions/ 目录下所有 JSON，新增文件无需改此文件
-const regionFiles = (require as any).context('./regions', false, /\.json$/);
-const allRegions: Region[] = regionFiles.keys().map((k: string) => regionFiles(k));
+const regionFiles = (require as RequireWithContext).context('./regions', false, /\.json$/);
+const allRegions: Region[] = regionFiles.keys().map(k => regionFiles(k));
 
 export { siteConfig };
 
@@ -43,3 +52,7 @@ export const visitedProvinces: number[] = allRegions
   .filter(code => code.startsWith('CN-'))
   .map(code => provinceAdcodeMap[code])
   .filter(Boolean) as number[];
+
+// 已访问国家数量：不含 "-" 的 mapCode 各计一次，任一 "CN-" 省份存在则中国计一次
+export const visitedCountryCount: number =
+  visitedCountries.length + (visitedProvinces.length > 0 ? 1 : 0);

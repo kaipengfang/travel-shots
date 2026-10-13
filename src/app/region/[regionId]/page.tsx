@@ -1,48 +1,36 @@
 'use client';
 
 import { useParams, useSearchParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import AlbumGrid from '@/components/AlbumGrid';
 import PhotoGallery from '@/components/PhotoGallery';
+import { useLocale } from '@/components/LocaleProvider';
 import { regions } from '@/data';
 
 export default function RegionPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const regionId = params.regionId as string;
-  const [locale, setLocale] = useState<'zh' | 'en'>('zh');
-  
+  const { locale } = useLocale();
+
   // 读取 URL 参数 ?photo=N
   const photoParam = searchParams.get('photo');
   const initialPhotoIndex = photoParam !== null ? parseInt(photoParam, 10) : null;
-
-  // 从 localStorage 读取语言偏好
-  useEffect(() => {
-    const saved = localStorage.getItem('photo_locale') as 'zh' | 'en';
-    if (saved) setLocale(saved);
-  }, []);
-
-  // 保存语言偏好
-  const handleLocaleChange = (newLocale: 'zh' | 'en') => {
-    setLocale(newLocale);
-    localStorage.setItem('photo_locale', newLocale);
-  };
 
   const region = regions.find(r => r.id === regionId);
 
   if (!region) {
     return (
       <div className="min-h-screen flex flex-col page-enter">
-        <Header locale={locale} onLocaleChange={handleLocaleChange} />
+        <Header />
         <main className="flex-1 container mx-auto px-4 py-8 flex items-center justify-center">
           <p className="text-zinc-400">
             {locale === 'zh' ? '地区不存在' : 'Region not found'}
           </p>
         </main>
-        <Footer locale={locale} />
+        <Footer />
       </div>
     );
   }
@@ -51,8 +39,8 @@ export default function RegionPage() {
 
   return (
     <div className="min-h-screen flex flex-col page-enter">
-      <Header locale={locale} onLocaleChange={handleLocaleChange} />
-      
+      <Header />
+
       <main className="flex-1 container mx-auto px-4 py-8">
         {/* 面包屑导航 */}
         <nav className="flex items-center gap-2 text-sm text-zinc-500 mb-6">
@@ -78,8 +66,8 @@ export default function RegionPage() {
           <AlbumGrid region={region} locale={locale} />
         ) : (
           <>
-            <PhotoGallery 
-              photos={region.albums[0]?.photos || []} 
+            <PhotoGallery
+              photos={region.albums[0]?.photos || []}
               locale={locale}
               title={region.albums[0]?.title[locale]}
               initialPhotoIndex={initialPhotoIndex}
@@ -90,7 +78,7 @@ export default function RegionPage() {
         )}
       </main>
 
-      <Footer locale={locale} />
+      <Footer />
     </div>
   );
 }

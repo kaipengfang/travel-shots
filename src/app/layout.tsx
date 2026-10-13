@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./watermark.css";
+import { LocaleProvider } from "@/components/LocaleProvider";
 
 export const metadata: Metadata = {
   title: "途影 | TravelShots Photography",
@@ -17,7 +18,7 @@ export default function RootLayout({
       <body
         className="antialiased bg-[#18181b] text-zinc-100"
       >
-        {children}
+        <LocaleProvider>{children}</LocaleProvider>
       </body>
     </html>
   );

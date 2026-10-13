@@ -2,13 +2,11 @@
 
 import Link from 'next/link';
 import { siteConfig } from '@/data/index';
+import { useLocale } from '@/components/LocaleProvider';
 
-interface HeaderProps {
-  locale: 'zh' | 'en';
-  onLocaleChange: (locale: 'zh' | 'en') => void;
-}
+export default function Header() {
+  const { locale, setLocale } = useLocale();
 
-export default function Header({ locale, onLocaleChange }: HeaderProps) {
   return (
     <header className="border-b border-gray-100 dark:border-white/10">
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -19,7 +17,7 @@ export default function Header({ locale, onLocaleChange }: HeaderProps) {
 
         {/* 导航 */}
         <nav className="flex items-center gap-6">
-          <a 
+          <a
             href={siteConfig.author.website}
             target="_blank"
             rel="noopener noreferrer"
@@ -27,10 +25,10 @@ export default function Header({ locale, onLocaleChange }: HeaderProps) {
           >
             {locale === 'zh' ? '关于' : 'About'}
           </a>
-          
+
           {/* 语言切换 */}
           <button
-            onClick={() => onLocaleChange(locale === 'zh' ? 'en' : 'zh')}
+            onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')}
             className="text-sm text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
             {locale === 'zh' ? 'EN' : '中'}
