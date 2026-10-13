@@ -13,7 +13,7 @@ interface AlbumGridProps {
 export default function AlbumGrid({ region, locale }: AlbumGridProps) {
   return (
     <div>
-      <h1 className="text-2xl font-light mb-8">{region.name[locale]}</h1>
+      <h1 className="text-2xl font-light mb-8 text-zinc-100">{region.name[locale]}</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {region.albums.map(album => (
@@ -23,7 +23,7 @@ export default function AlbumGrid({ region, locale }: AlbumGridProps) {
             className="group block"
           >
             {/* 封面图 */}
-            <div className="aspect-[3/2] relative overflow-hidden rounded-lg bg-gray-100 mb-3">
+            <div className="aspect-[3/2] relative overflow-hidden rounded-lg bg-gray-800 mb-3">
               {album.cover ? (
                 <Image
                   src={photoUrl(album.cover)}
@@ -33,15 +33,15 @@ export default function AlbumGrid({ region, locale }: AlbumGridProps) {
                   sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                 />
               ) : (
-                <div className="absolute inset-0 bg-gradient-to-br from-gray-200 to-gray-300 group-hover:scale-105 transition-transform duration-300" />
+                <div className="absolute inset-0 bg-gradient-to-br from-gray-700 to-gray-800 group-hover:scale-105 transition-transform duration-300" />
               )}
             </div>
-            
+
             {/* 相册信息 */}
-            <h3 className="font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
+            <h3 className="font-medium text-zinc-100 group-hover:text-amber-400 transition-colors">
               {album.title[locale]}
             </h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-zinc-500 mt-1">
               {album.photos.length} {locale === 'zh' ? '张照片' : 'photos'} · {album.date}
             </p>
           </Link>

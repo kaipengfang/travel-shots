@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import "./watermark.css";
 import { LocaleProvider } from "@/components/LocaleProvider";
 
 export const metadata: Metadata = {
