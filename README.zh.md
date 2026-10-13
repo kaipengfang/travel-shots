@@ -19,7 +19,7 @@
 - ❤️ **点赞** — 相册和单张照片均可点赞，以加盐 IP 哈希为凭证，存储在 Supabase（无账号、无评论）
 - 👋 **访客计数** — 页脚"欢迎，第 N 位来访的地球人"，基于 Vercount
 - 🌐 **中英双语** — UI、地图标签和图片信息均支持
-- 📦 **一条命令导入相册** — EXIF → 三档 WebP → 上传 R2 → 写入地区 JSON
+- 📦 **一条命令导入相册** — EXIF → 三档 WebP → 上传 R2 → 写入地区 JSON，另附 Claude Code skill 连 caption 一起写
 - 🤖 **CLIP 智能排序** — 用视觉相似度对相册照片自动排序（可选）
 
 ---
@@ -110,6 +110,10 @@ node scripts/import-album.mjs --dir ~/photos/qingdao \
 
 地区已存在时 `--region-name / --map-code / --coords` 可省略，相册已存在时 `--album-title` 可省略。
 常用参数：`--dry-run` 只打印计划，`--no-upload` 只生成 + 写 JSON，`--upload-only` 只上传 `.cache/import/` 里已有的 WebP，`--proxy URL` 让 R2 走代理。
+
+### 用 Claude Code：`/add-album`
+
+仓库自带一个 agent skill：`.claude/skills/add-album/SKILL.md`。在 [Claude Code](https://claude.com/claude-code) 里打开项目，说"把 ~/photos/qingdao 加成新相册"即可：agent 会读 EXIF、运行 `import-album.mjs`、拼 contact sheet 看图为每张照片写中英 caption、选封面、上传 R2、本地验证页面并推送 `main`，最后汇报哪些地名是推断的，方便你纠正。
 
 ### 手动：编辑 JSON
 
@@ -276,6 +280,7 @@ public/maps/
 ├── world.json              # Natural Earth 110m 国家（TopoJSON）
 ├── china.json              # 中国省份（GeoJSON，adcode）
 └── extra-countries.json    # 110m 缺失的小国轮廓
+.claude/skills/add-album/     # Claude Code skill: full add-album workflow
 scripts/
 ├── import-album.mjs                # ★ 一条命令导入相册
 ├── generate-large.mjs              # 为已有相册生成 2048/3840 WebP

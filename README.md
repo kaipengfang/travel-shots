@@ -19,7 +19,7 @@
 - ❤️ **Likes** — Albums and individual photos, keyed by a salted IP hash, stored in Supabase (no accounts, no comments)
 - 👋 **Visitor counter** — "Welcome, Earthling No. N" in the footer via Vercount
 - 🌐 **Bilingual** — Chinese/English for the UI, map labels and photo metadata
-- 📦 **One-command import** — EXIF → three WebP sizes → R2 upload → region JSON
+- 📦 **One-command import** — EXIF → three WebP sizes → R2 upload → region JSON, plus a Claude Code skill that also writes the captions
 - 🤖 **CLIP Smart Sorting** — Auto-sort album photos by visual similarity (optional)
 
 ---
@@ -110,6 +110,10 @@ node scripts/import-album.mjs --dir ~/photos/qingdao \
 
 `--region-name / --map-code / --coords` can be omitted when the region already exists, `--album-title` when the album exists.
 Useful flags: `--dry-run`, `--no-upload` (generate + write JSON only), `--upload-only` (push the cached WebPs in `.cache/import/`), `--proxy URL`.
+
+### With Claude Code: `/add-album`
+
+The repo ships an agent skill at `.claude/skills/add-album/SKILL.md`. Open the project in [Claude Code](https://claude.com/claude-code) and say "add the folder ~/photos/qingdao as a new album": the agent reads EXIF, runs `import-album.mjs`, looks at contact sheets to write a zh/en caption for every photo, picks a cover, uploads to R2, verifies the pages locally and pushes `main`. It reports which place names it guessed so you can correct them.
 
 ### By hand: edit JSON
 
@@ -276,6 +280,7 @@ public/maps/
 ├── world.json              # Natural Earth 110m countries (TopoJSON)
 ├── china.json              # Chinese provinces (GeoJSON, adcode)
 └── extra-countries.json    # Outlines missing from 110m
+.claude/skills/add-album/     # Claude Code skill: full add-album workflow
 scripts/
 ├── import-album.mjs                # ★ One-command album import
 ├── generate-large.mjs              # Create 2048/3840 WebP for existing albums

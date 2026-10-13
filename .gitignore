@@ -14,5 +14,6 @@ dist/
 .venv/
 .env*.local
 tsconfig.tsbuildinfo
-.claude/
+.claude/*
+!.claude/skills/
 .cache/
