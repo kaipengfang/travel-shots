@@ -159,6 +159,8 @@ export default function GlobeMap({ locale }: GlobeMapProps) {
   const [minZoom, setMinZoom] = useState(MIN_ZOOM);
   const userInteractedRef = useRef<(() => void) | null>(null);
   const updateAnchorRef = useRef<(() => void) | null>(null);
+  /** 中国本土的经纬度范围（不含南海诸岛），点“中国”时按画布大小自适应取景 */
+  const chinaBoundsRef = useRef<[[number, number], [number, number]] | null>(null);
   const [usedFallbackStyle, setUsedFallbackStyle] = useState(false);
   localeRef.current = locale;
 
@@ -275,6 +277,25 @@ export default function GlobeMap({ locale }: GlobeMapProps) {
             properties: { ...f.properties, visited: provinceSet.has(f.properties.adcode) },
           })),
         };
+
+        // 中国本土范围：只统计省级要素，忽略纬度 17° 以南的南海岛礁点，
+        // 否则几何中心会被拉到海南以南，“居中”就偏了
+        {
+          let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+          const visit = (c: unknown) => {
+            if (Array.isArray(c) && typeof c[0] === 'number') {
+              const [lng, lat] = c as number[];
+              if (lat < 17) return;
+              if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng;
+              if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
+            } else if (Array.isArray(c)) c.forEach(visit);
+          };
+          china.features.forEach(f => {
+            const code = f.properties.adcode;
+            if (typeof code === 'number' && code >= 110000 && code <= 820000) visit((f.geometry as { coordinates: unknown }).coordinates);
+          });
+          if (Number.isFinite(minLng)) chinaBoundsRef.current = [[minLng, minLat], [maxLng, maxLat]];
+        }
 
         // 地区 → 轮廓范围索引，用于点击后把该地区放大到合适尺寸
         const regionBounds = new Map<string, [[number, number], [number, number]]>();
@@ -522,7 +543,23 @@ export default function GlobeMap({ locale }: GlobeMapProps) {
   };
   const goChina = () => {
     setActiveRegion(null);
-    mapRef.current?.flyTo({ ...CHINA_VIEW, curve: 1.4, speed: 0.8, essential: true });
+    const map = mapRef.current;
+    if (!map) return;
+    userInteractedRef.current?.();
+    const b = chinaBoundsRef.current;
+    if (b) {
+      // 按当前画布尺寸取景：整个中国刚好放下，主体陆地居中；左上角按钮区留出空间
+      const narrow = map.getContainer().clientWidth < WIDE_BREAKPOINT;
+      map.fitBounds(b, {
+        padding: narrow ? { top: 70, bottom: 24, left: 16, right: 16 } : { top: 70, bottom: 40, left: 40, right: 90 },
+        maxZoom: 6,
+        curve: 1.4,
+        speed: 0.8,
+        essential: true,
+      });
+    } else {
+      map.flyTo({ ...CHINA_VIEW, curve: 1.4, speed: 0.8, essential: true });
+    }
   };
 
   return (
@@ -666,6 +703,14 @@ export default function GlobeMap({ locale }: GlobeMapProps) {
         }
         @media (max-width: ${WIDE_BREAKPOINT - 1}px) {
           .globe-panel { top: auto; left: 12px; right: 12px; bottom: 12px; width: auto; max-height: ${PANEL_H_MOBILE}px; }
+          /* 窄屏：相册卡片横向滑动，一次一张完整的，右侧露出下一张的边提示还有更多 */
+          .globe-panel .globe-panel-list {
+            flex-direction: row; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 0 10px 10px;
+            scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+          }
+          .globe-panel .globe-panel-list::-webkit-scrollbar { display: none; }
+          .globe-panel .globe-panel-card { flex: 0 0 84%; scroll-snap-align: start; }
+          .globe-panel .globe-panel-card:last-child { margin-right: 10px; }
         }
         .globe-panel-head { display: flex; align-items: baseline; gap: 10px; padding: 12px 14px 8px; }
         .globe-panel-head h3 { margin: 0; font-size: 17px; font-weight: 600; color: #fff; line-height: 1.2; }
