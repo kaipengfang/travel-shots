@@ -1,6 +1,6 @@
 # TravelShots · 途影
 
-> A personal photography showcase website centered around an interactive world map. Light up every place you've been.
+> A personal photography showcase built around an interactive 3D globe. Light up every place you've been.
 
 **[Live Demo →](https://gallery.fangkaipeng.com)** · [中文文档 →](./README.zh.md)
 
@@ -12,12 +12,14 @@
 
 ## Features
 
-- 🗺️ **Interactive World Map** — Highlight visited countries and Chinese provinces (d3-geo, Natural Earth projection)
+- 🌍 **3D Globe** — MapLibre globe with visited countries and Chinese provinces lit up, clustered photo markers, and an album panel that opens next to the region you click (OpenFreeMap tiles, no API key)
+- 🌊 **Photo River** — Three slowly scrolling rows of photos under the globe, ordered by shooting date; click one to open it in the lightbox
 - 📸 **Masonry Gallery** — Preserves original aspect ratios with greedy pre-sorting for natural visual flow
-- 🔍 **Lightbox** — Full-screen view with EXIF info and frosted glass background
-- 💬 **Likes & Comments** — Powered by Supabase, no self-hosted backend needed
-- 🌙 **Dark Mode** — Follows system preference automatically
-- 🌐 **Bilingual** — Full Chinese/English support for both UI and photo metadata
+- 🔍 **Lightbox** — Full-screen view with EXIF info; serves a 2048px or 3840px WebP depending on the screen, originals never reach the browser
+- ❤️ **Likes** — Albums and individual photos, keyed by a salted IP hash, stored in Supabase (no accounts, no comments)
+- 👋 **Visitor counter** — "Welcome, Earthling No. N" in the footer via Vercount
+- 🌐 **Bilingual** — Chinese/English for the UI, map labels and photo metadata
+- 📦 **One-command import** — EXIF → three WebP sizes → R2 upload → region JSON
 - 🤖 **CLIP Smart Sorting** — Auto-sort album photos by visual similarity (optional)
 
 ---
@@ -26,14 +28,15 @@
 
 ### Requirements
 
-- Node.js 18+
-- Python 3.10+ (only needed for CLIP sorting scripts)
+- Node.js 20+
+- [exiftool](https://exiftool.org/) (only for `import-album.mjs`)
+- Python 3.10+ (only for CLIP sorting scripts)
 
 ### Install
 
 ```bash
-git clone https://github.com/your-username/photography-website.git
-cd photography-website
+git clone https://github.com/kaipengfang/travel-shots.git
+cd travel-shots
 npm install
 ```
 
@@ -45,11 +48,18 @@ Copy the environment file:
 cp .env.example .env.local
 ```
 
-Fill in your Supabase credentials (see [Deployment](#deployment)):
+Fill in Supabase (likes) and, if you use the upload scripts, Cloudflare R2:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...   # server only, never shipped to the browser
+LIKES_SALT=random_string        # optional; changing it resets everyone's likes
+
+R2_ACCOUNT_ID=...
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET_NAME=...
 ```
 
 Edit `src/data/config.json` with your own info:
@@ -67,6 +77,8 @@ Edit `src/data/config.json` with your own info:
 }
 ```
 
+Also add your CDN host to `remotePatterns` in `next.config.ts`.
+
 ### Run
 
 ```bash
@@ -78,9 +90,30 @@ npm run dev
 
 ## Adding Albums
 
-**Only edit JSON — no code changes needed.**
+### The fast way: `import-album.mjs`
 
-### Data Structure
+One command takes a folder of JPGs and does everything:
+
+```bash
+node scripts/import-album.mjs --dir ~/photos/qingdao \
+  --region shandong --album qingdao \
+  --region-name "山东/Shandong" --album-title "青岛/Qingdao" \
+  --location "中国 青岛/Qingdao, China" \
+  --map-code CN-37 --coords 120.4,36.1 \
+  --captions captions.json        # optional: {"file.jpg": {"zh": "...", "en": "..."}}
+```
+
+1. Reads EXIF with exiftool (camera, lens, ISO, aperture, shutter, date, size)
+2. Generates three WebP sizes with sharp: 800px thumbnail, 2048px `large`, 3840px `xlarge` — the original is **not** uploaded
+3. Uploads to R2 under `photos/{region}/{album}/` (existing files are skipped)
+4. Writes `src/data/regions/{region}.json` — creates the region/album if missing, appends otherwise
+
+`--region-name / --map-code / --coords` can be omitted when the region already exists, `--album-title` when the album exists.
+Useful flags: `--dry-run`, `--no-upload` (generate + write JSON only), `--upload-only` (push the cached WebPs in `.cache/import/`), `--proxy URL`.
+
+### By hand: edit JSON
+
+**Only edit JSON — no code changes needed.**
 
 ```
 Region → Album → Photo
@@ -88,35 +121,35 @@ Region → Album → Photo
 
 Each region is a single JSON file under `src/data/regions/`. The site auto-discovers all files in that directory.
 
-### Add a New Region
-
-Create `src/data/regions/{region-id}.json`:
-
 ```jsonc
 {
   "id": "yunnan",                          // unique id, used in URL: /region/yunnan
   "name": { "zh": "云南", "en": "Yunnan" },
-  "coordinates": [102.7, 25.0],            // [longitude, latitude] — reverse of Google Maps order
-  "mapCode": "CN-53",                      // used to highlight on map, see docs/codes.md
+  "coordinates": [102.7, 25.0],            // [longitude, latitude] — marker position on the globe
+  "mapCode": "CN-53",                      // which outline to light up, see docs/codes.md
   "albums": [
     {
       "id": "yunnan-dali",                 // unique id, used in URL: /region/yunnan/yunnan-dali
       "title": { "zh": "大理", "en": "Dali" },
       "date": "2024-05-01",
       "cover": "yunnan/dali/cover.webp",   // album cover on region page, relative to photoBaseUrl
+      "highlights": ["yunnan-003"],        // optional: photo ids shown on the globe's album card (auto-picked otherwise)
       "photos": [
         {
-          "src": "yunnan/dali/001.jpg",        // full-res image shown in lightbox
-          "thumbnail": "yunnan/dali/001.webp", // compressed thumbnail (800px wide) for masonry
-          "width": 4000,                       // actual pixel dimensions — required, wrong values break layout
+          "id": "yunnan-001",                     // unique within the site, used for likes and highlights
+          "thumbnail": "yunnan/dali/001.webp",    // 800px WebP for masonry and the photo river
+          "large": "yunnan/dali/001_2048.webp",   // lightbox, 2K screens (optional, falls back to thumbnail)
+          "xlarge": "yunnan/dali/001_3840.webp",  // lightbox, 4K screens (optional)
+          "width": 4000,                          // actual pixel dimensions — wrong values break layout
           "height": 2667,
+          "title": { "zh": "", "en": "" },
           "caption": { "zh": "洱海日落", "en": "Sunset over Erhai Lake" },
           "location": { "zh": "大理，云南", "en": "Dali, Yunnan" },
-          "date": "2024-05-01",
-          "exif": {                            // optional, all subfields can be omitted
+          "date": "2024-05-01",                   // also drives the photo river and "last updated"
+          "exif": {                               // optional
             "camera": "Sony A7C",
             "lens": "24-70mm f/2.8",
-            "iso": "100",
+            "iso": 100,
             "aperture": "f/8",
             "shutter": "1/250s"
           }
@@ -127,6 +160,8 @@ Create `src/data/regions/{region-id}.json`:
 }
 ```
 
+`src` (the original file) may still be present in older data; the data layer strips it so originals are never exposed. Run `scripts/generate-large.mjs` to create `large`/`xlarge` for existing albums, and `scripts/delete-originals.mjs --yes` to remove originals from R2 afterwards.
+
 ### mapCode Reference
 
 | Type | Format | Example |
@@ -136,12 +171,14 @@ Create `src/data/regions/{region-id}.json`:
 
 Full reference: [`docs/codes.md`](./docs/codes.md)
 
+> **Globe outlines.** Countries are drawn from Natural Earth 110m (`public/maps/world.json`). The names the globe recognises are listed in `COUNTRY_NAME_TO_ISO` at the top of `src/components/GlobeMap.tsx` — add a line there for each new country you visit. Tiny countries that 110m omits (e.g. Singapore) go in `public/maps/extra-countries.json`.
+
 ### Image Paths
 
 All paths in JSON are relative. The actual URL is `photoBaseUrl` + path.
 
-e.g. `photoBaseUrl = "https://cdn.example.com/photos"` + `yunnan/dali/001.jpg`  
-→ `https://cdn.example.com/photos/yunnan/dali/001.jpg`
+e.g. `photoBaseUrl = "https://cdn.example.com/photos"` + `yunnan/dali/001.webp`
+→ `https://cdn.example.com/photos/yunnan/dali/001.webp`
 
 ---
 
@@ -149,46 +186,24 @@ e.g. `photoBaseUrl = "https://cdn.example.com/photos"` + `yunnan/dali/001.jpg`
 
 ### 1. Image Storage (Cloudflare R2 recommended)
 
-R2 free tier: 10GB storage + 10M requests/month, egress is free.
+R2 free tier: 10GB storage + 10M requests/month, egress is free. Put the R2 credentials in `.env.local`; `import-album.mjs` uploads for you. Then point `photoBaseUrl` in `config.json` at your R2 public domain.
 
-```bash
-node scripts/upload-to-r2.mjs
-```
+> Any S3-compatible storage works (AWS S3, Aliyun OSS, etc.) — just change the endpoint in the scripts and `photoBaseUrl`.
 
-Then update `photoBaseUrl` in `config.json` to your R2 public domain.
-
-> Any S3-compatible storage works (AWS S3, Aliyun OSS, etc.) — just change `photoBaseUrl`.
-
-### 2. Likes & Comments (Supabase)
+### 2. Likes (Supabase)
 
 1. Create a free project at [supabase.com](https://supabase.com)
-2. Run the following SQL in the SQL Editor:
+2. Run [`docs/likes.sql`](./docs/likes.sql) in the SQL Editor. It creates the `likes` table with RLS enabled and **no** anon policy — the browser can't touch the table directly.
+3. Copy `URL`, `anon key` and `service_role key` from Settings → API into `.env.local`
 
-```sql
-create table likes (
-  id uuid default gen_random_uuid() primary key,
-  album_id text not null,
-  created_at timestamp with time zone default now()
-);
+All reads and writes go through `/api/likes` on the server. The like "identity" is a salted hash of the visitor IP; no plain IPs, no personal data, no comments.
+If you don't want likes at all, leave the Supabase variables empty — the hearts are simply hidden.
 
-create table comments (
-  id uuid default gen_random_uuid() primary key,
-  album_id text not null,
-  nickname text not null,
-  content text not null,
-  created_at timestamp with time zone default now()
-);
+### 3. Visitor counter (Vercount)
 
-alter table likes enable row level security;
-alter table comments enable row level security;
+`VisitorCounter.tsx` posts to the public [Vercount](https://vercount.one) API; nothing to configure. It does not report from `localhost`. Delete the component from `Footer.tsx` if you don't want it.
 
-create policy "allow all" on likes for all using (true) with check (true);
-create policy "allow all" on comments for all using (true) with check (true);
-```
-
-3. Copy the `URL` and `anon key` from Settings → API into `.env.local`
-
-### 3. Deploy to Vercel
+### 4. Deploy to Vercel
 
 Import your GitHub repo at [vercel.com](https://vercel.com) and add the environment variables, or use the CLI:
 
@@ -197,13 +212,13 @@ npm install -g vercel
 vercel
 ```
 
-Every push to `main` triggers an automatic redeploy.
+Every push to `main` triggers an automatic redeploy. The likes API uses Vercel's `x-vercel-ip-country` header for an optional country column.
 
 ---
 
 ## CLIP Smart Sorting (Optional)
 
-Automatically sorts photos within each album by visual similarity for smoother visual transitions.
+Automatically sorts photos within each album by visual similarity for smoother visual transitions. The globe's album cards pick three highlights spread across that order, so they end up showing different places.
 
 ### Setup
 
@@ -229,29 +244,6 @@ This will:
 
 > Requires R2 credentials in `.env.local` for downloading existing thumbnails.
 
-### Upload Photos
-
-Use the generic upload script to upload photos and update region JSON in one step:
-
-```bash
-# Append to existing album
-node scripts/upload-photos.mjs \
-  --dir /path/to/photos \
-  --region hongkong --album hongkong \
-  --processed /path/to/processed.json
-
-# Create new region + album
-node scripts/upload-photos.mjs \
-  --dir /path/to/photos \
-  --region macau --album macau \
-  --processed /path/to/processed.json \
-  --new-region \
-  --region-name-zh 澳门 --region-name-en Macau \
-  --coordinates "113.5,22.2" --map-code CN-MO
-```
-
-Then run CLIP sorting to reorder all photos by visual similarity.
-
 ---
 
 ## Project Structure
@@ -259,32 +251,53 @@ Then run CLIP sorting to reorder all photos by visual similarity.
 ```
 src/
 ├── app/                    # Next.js App Router
-├── components/             # UI components
+│   ├── page.tsx            # Home: globe + photo river + motto
+│   ├── region/[regionId]/  # Region page and album page
+│   └── api/likes/          # Likes API (server-side Supabase)
+├── components/
+│   ├── GlobeMap.tsx        # 3D globe, markers, album panel
+│   ├── PhotoRiver.tsx      # Time-ordered scrolling photo rows
+│   ├── PhotoGallery.tsx    # Masonry gallery
+│   ├── PhotoLightbox.tsx   # Lightbox with srcset (large/xlarge)
+│   ├── LikesProvider.tsx   # Like state, one request per page
+│   ├── LikeButton.tsx
+│   ├── VisitorCounter.tsx
+│   └── LocaleProvider.tsx  # zh/en context
 ├── data/
 │   ├── config.json         # Site config ← customize here
 │   ├── index.ts            # Auto-aggregates all region data
 │   └── regions/            # One JSON per region ← add albums here
 └── lib/
     ├── types.ts
-    └── photoUrl.ts
+    ├── photoUrl.ts
+    ├── highlights.ts       # Picks album highlight photos
+    └── likesServer.ts      # Supabase client, IP hashing
+public/maps/
+├── world.json              # Natural Earth 110m countries (TopoJSON)
+├── china.json              # Chinese provinces (GeoJSON, adcode)
+└── extra-countries.json    # Outlines missing from 110m
 scripts/
-├── gen-data.py                     # Generate JSON from photo folders
-├── batch-thumbnails.sh             # Batch generate WebP thumbnails
-├── upload-photos.mjs               # Generic upload script (R2 + region JSON)
-├── upload-to-r2.mjs                # Upload photos to Cloudflare R2
-├── clip_sort_tsp_breakpoint.py     # CLIP + TSP sorting (writes directly to region JSON)
-└── apply-clip-sort.ts              # Apply existing clip_sorted.json to region JSON
+├── import-album.mjs                # ★ One-command album import
+├── generate-large.mjs              # Create 2048/3840 WebP for existing albums
+├── delete-originals.mjs            # Remove originals from R2 (dry-run by default)
+├── upload-photos.mjs               # Older generic upload (R2 + region JSON)
+├── upload-to-r2.mjs                # Plain R2 upload
+├── clip_sort_tsp_breakpoint.py     # CLIP + TSP sorting (writes to region JSON)
+└── apply-clip-sort.ts              # Apply an existing clip_sorted.json
 ```
 
 ---
 
 ## Notes
 
-- **Image formats:** Masonry uses `.webp` thumbnails (800px wide); lightbox uses original `.jpg`. Both are required.
+- **Image formats:** Masonry and the river use 800px `.webp` thumbnails; the lightbox uses `large`/`xlarge` WebP via `srcset` and falls back to the thumbnail if they are missing.
+- **Globe tiles:** The base map is OpenFreeMap's dark style, fetched at runtime. If it can't be reached the globe still renders with a plain dark background and your outlines.
 - **Chinese filenames:** `next.config.ts` sets `unoptimized: true` to avoid issues with non-ASCII paths.
-- **Hydration:** Masonry pre-sorting runs client-side only to avoid SSR/CSR mismatch.
-- **Copyright:** Images are protected via CSS `pointer-events: none` + `user-select: none` with copyright notice in the lightbox.
+- **Hydration:** Masonry pre-sorting runs client-side only to avoid SSR/CSR mismatch; the globe is loaded with `ssr: false`.
+- **Copyright:** Originals are never served; display images are protected via CSS `pointer-events: none` + `user-select: none` with a copyright notice in the lightbox.
 - **Supabase free tier:** 500MB database + 2M API requests/month — more than enough for personal use.
+
+Changelog: [`docs/CHANGELOG.md`](./docs/CHANGELOG.md)
 
 ---
 

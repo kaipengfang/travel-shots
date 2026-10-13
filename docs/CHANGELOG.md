@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-10-13
+
+### 新增
+- **3D 地球首页**：MapLibre GL 球面地图替代 d3-geo SVG 世界地图。点亮国家 / 省份轮廓，照片标记按屏幕距离聚合，点击地区取景到轮廓并在旁边弹出相册面板（三张自动挑选的亮点照片）；返回时恢复视角；标签随站点语言切换并按缩放级别渐进显示；窄屏改为底部面板、相册卡片横向滑动
+- **照片流**：地球下方三行按拍摄时间排序的滚动照片，点击打开灯箱，关闭后回到首页
+- **两档灯箱大图**：`large` 2048px / `xlarge` 3840px WebP，`srcset` 按屏幕选择；原图从前端数据中剥离，不再暴露。配套 `generate-large.mjs`（补生成）和 `delete-originals.mjs`（删 R2 原图，默认 dry-run）
+- **单张照片点赞**：相册和照片都可点赞，以加盐 IP 哈希为凭证；读写全部经由 `/api/likes`，Supabase 使用 service role key，anon 无任何 RLS 策略（`docs/likes.sql`）
+- **访客计数**：页脚 Vercount 独立访客数；座右铭后显示最新照片的拍摄日期作为"更新于"
+- **`scripts/import-album.mjs`**：一条命令完成 EXIF → 三档 WebP → R2 上传 → region JSON，替代 photo-annotator + gen-data.py 流程
+- `LocaleProvider` 统一管理中英文状态
+
+### 移除
+- **评论功能**：评论接口、`AlbumInteraction` 组件和 Supabase 浏览器端客户端全部删除，开源版本不再提供评论
+- 旧的 SVG 世界地图（`WorldMap.tsx`、`PhotoMap.tsx`、`china-topo.json`、`world.svg`）
+- 未使用的组件、素材和依赖（水印组件、`messages/*.json`、Next.js 模板 svg）
+
+### 修复
+- 灯箱在大图缺失时退回缩略图
+- `visitedCountryCount` 统计口径统一（任一中国省份存在则中国计一次）
+- 访客计数按 Vercount 的站点 cookie 判断新访客，避免重复计数
+
+---
+
 ## 2026-02-17
 
 ### 新增

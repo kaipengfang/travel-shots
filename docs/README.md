@@ -9,8 +9,8 @@
 - [技术栈](#技术栈)
 - [项目结构](#项目结构)
 - [核心组件](#核心组件)
-  - [世界地图](#1-世界地图-worldmaptsx)
-  - [气泡框](#2-气泡框定位算法)
+  - [3D 地球](#1-3d-地球-globemaptsx)
+  - [相册面板与照片流](#2-相册面板与亮点照片)
   - [瀑布流画廊](#3-瀑布流画廊-photogallerytsx)
   - [灯箱详情页](#4-灯箱详情页-photolightboxtsx)
   - [CLIP 智能排序](#5-clip-智能排序)
@@ -27,8 +27,8 @@
 |------|------|------|
 | 前端框架 | Next.js 16 + TypeScript | SSR、App Router |
 | 样式 | Tailwind CSS | 快速开发、深色模式 |
-| 地图 | d3-geo | 灵活度高，支持自定义投影 |
-| 后端 | Supabase | 点赞/评论，免费 500MB |
+| 地图 | MapLibre GL（球面投影） | 3D 地球，OpenFreeMap 底图无需 key |
+| 后端 | Supabase | 点赞，免费 500MB |
 | 图片处理 | Gemini Vision API | 自动生成 caption |
 | 部署 | Vercel | 免费、全球 CDN |
 | 图片存储 | Cloudflare R2 | 流量免费，成本最低 |
@@ -38,17 +38,19 @@
 ## 项目结构
 
 ```
-photography-website/
+travel-shots/
 ├── src/
 │   ├── app/                          # Next.js App Router
-│   │   ├── page.tsx                  # 首页（地图）
+│   │   ├── page.tsx                  # 首页（地球 + 照片流）
 │   │   ├── region/[regionId]/        # 地区页
 │   │   └── region/[regionId]/[albumId]/  # 相册页
 │   ├── components/
-│   │   ├── WorldMap.tsx              # 核心地图组件
+│   │   ├── GlobeMap.tsx              # 3D 地球
+│   │   ├── PhotoRiver.tsx            # 时间照片流
 │   │   ├── PhotoGallery.tsx          # 瀑布流画廊
 │   │   ├── PhotoLightbox.tsx         # 灯箱详情页
-│   │   └── AlbumInteraction.tsx      # 点赞评论
+│   │   ├── LikesProvider.tsx         # 点赞状态（IP 凭证）
+│   │   └── LikeButton.tsx            # 爱心按钮
 │   ├── data/
 │   │   ├── index.ts                  # 自动聚合，动态计算派生数据
 │   │   ├── config.json               # 全局配置（图床URL、网站名等）
@@ -75,41 +77,36 @@ photography-website/
 
 ## 核心组件
 
-### 1. 世界地图 (`WorldMap.tsx`)
+### 1. 3D 地球 (`GlobeMap.tsx`)
 
 **功能：**
-- 世界地图展示（Natural Earth 投影）
-- 中国省份边界叠加
-- 去过的国家/省份「点亮」效果（琥珀色 + 发光滤镜）
-- 地图拖拽平移、滚轮缩放
-- 「世界视图」「中国视图」快捷切换
-- 标记点 + Hover 气泡预览
+- MapLibre GL 球面投影，底图为 OpenFreeMap dark 样式（无需 API key，拉不到时退回纯色背景）
+- 国家轮廓来自 `public/maps/world.json`（Natural Earth 110m），省份来自 `public/maps/china.json`（adcode），110m 缺失的小国放 `public/maps/extra-countries.json`
+- 去过的国家 / 省份「点亮」（琥珀色填充）；跨 180° 经线的环会被剔除，避免在球面上拉成扇形
+- 标签只保留国家 / 省 / 城市三级，按缩放级别渐进显示，语言跟随站点 locale
+- 照片标记按屏幕距离聚合；点击地区取景到其轮廓，并在标记旁打开相册面板
+- 「世界」「中国」按钮：中国按当前画布尺寸自适应取景（只统计纬度 17° 以北的省级要素）
+- 离开页面前把视角存到 sessionStorage，从相册返回时恢复
 
 **配置：**
 ```typescript
-// 地图尺寸
-const svgWidth = 1400;
-const svgHeight = 820;
-
-// 颜色配置
-const VISITED_FILL = '#f59e0b';      // 已访问：琥珀色
-const UNVISITED_FILL = '#1a2035';    // 未访问：深蓝灰
+const OPENFREEMAP_DARK = 'https://tiles.openfreemap.org/styles/dark';
+const COUNTRY_NAME_TO_ISO = { China: 'CN', 'South Korea': 'KR', ... }; // 新去一个国家在这里加一行
+const MIN_ZOOM = 2; const MIN_ZOOM_NARROW = 1.2; const MAX_ZOOM = 9;
+const PANEL_W = 480; const PANEL_H_MOBILE = 230; const WIDE_BREAKPOINT = 768;
 ```
 
-### 2. 气泡框定位算法
+### 2. 相册面板与亮点照片
 
-**核心逻辑（v9）：**
-1. 计算标记点到容器四边的空间
-2. 定义 8 个方向候选位置（四角 + 四边）
-3. 每个方向判断是否能完整放下气泡框
-4. 选择第一个有效方向
-5. 边界约束保底
+- 宽屏：面板固定在地区轮廓一侧（480px）；窄屏：底部面板（230px），相册卡片横向滑动
+- 每张相册卡片展示三张亮点照片，由 `src/lib/highlights.ts` 挑选：优先 `album.highlights` 指定的 id；否则只取横幅、按地点去重、在相册顺序上均匀分散（CLIP 排序后相邻照片相似，分散取样能避免三张同一地方）
+- 面板缩略图使用 eager 加载，因为打开面板后它们就是 LCP
 
-**优先级：** 右下 > 右上 > 左下 > 左上 > 右 > 左 > 下 > 上
+### 2.5 照片流 (`PhotoRiver.tsx`)
 
-**气泡框尺寸：**
-- 多相册（3 个）：420 × 288 px
-- 单相册（6 张图）：420 × 428 px
+- 所有有拍摄日期的横幅照片，每个相册均匀取样最多 6 张，总数上限 54 张（约 3 MB 缩略图），超出时按时间均匀抽样
+- 轮流分配到三行，每行内部按时间顺序，CSS 动画无限滚动，三行速度略有不同
+- 点击跳转 `/region/.../?photo=N&from=home`，灯箱关闭后回到首页
 
 ### 3. 瀑布流画廊 (`PhotoGallery.tsx`)
 
@@ -246,6 +243,26 @@ Region (地区/国家)
 
 ## 部署流程
 
+### 新增相册（一条命令）
+
+```bash
+node scripts/import-album.mjs --dir ~/photos/qingdao \
+  --region shandong --album qingdao \
+  --region-name "山东/Shandong" --album-title "青岛/Qingdao" \
+  --location "中国 青岛/Qingdao, China" \
+  --map-code CN-37 --coords 120.4,36.1 \
+  --album-date 2026-10-01 \
+  --captions captions.json          # {"文件名.jpg": {"zh": "...", "en": "..."}}
+```
+
+脚本会：读 EXIF（exiftool）→ 生成 800 / 2048 / 3840 三档 WebP（sharp，原图不上传）→ 上传 R2
+`photos/{region}/{album}/` → 写入 `src/data/regions/{region}.json`（地区 / 相册不存在则新建，存在则追加）。
+地区已存在时 `--region-name / --map-code / --coords` 可省略；相册已存在时 `--album-title` 可省略。
+`--no-upload` 只生成 + 写 JSON，`--upload-only` 只上传缓存里的 WebP（`.cache/import/`），
+`--proxy` 让 R2 走代理。生成后 `npm run dev` 检查，再 push `main` 自动部署。
+
+### 旧流程（photo-annotator + gen-data.py）
+
 ### 完整步骤
 
 ```
@@ -324,12 +341,12 @@ cp "源文件夹"/*.jpg public/photos/{region}/{album}/
 ### ❌ 地图不点亮
 
 **原因：**
-- 省份：缺少 provinceCode
-- 国家：countryNameToCode 映射缺失
+- 省份：`mapCode` 不是 `CN-xx` 格式
+- 国家：`COUNTRY_NAME_TO_ISO` 映射缺失（名字要和 Natural Earth 一致）
 
 **解决：**
-- 省份：在对应地区的 JSON 文件中添加 `provinceCode`
-- 国家：在 WorldMap.tsx 添加映射
+- 省份：在对应地区的 JSON 文件中设置 `mapCode`（见 docs/codes.md）
+- 国家：在 GlobeMap.tsx 的 `COUNTRY_NAME_TO_ISO` 添加映射；110m 没有的小国补到 `extra-countries.json`
 
 ### ❌ Hydration 错误
 
@@ -359,8 +376,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 | 色彩模式 | 深色背景 | 突出照片 |
 | EXIF 信息 | 只在大图显示 | 减少干扰 |
 | 双语 | UI + 图片信息 | 国际化 |
-| 域名 | photo.fangkaipeng.com | 子域名 |
+| 域名 | 自定义子域名 | 子域名 |
 
 ---
 
-*最后更新：2026-02-17*
+*最后更新：2026-10-13*
