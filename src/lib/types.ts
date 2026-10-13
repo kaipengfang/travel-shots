@@ -2,8 +2,12 @@
 
 export interface Photo {
   id: string;
+  /** 原图（可能很大，仅用于下载/兜底） */
   src: string;
+  /** 瀑布流缩略图 */
   thumbnail: string;
+  /** 灯箱用的中等尺寸图（约 2560px 宽），缺省时回退到 src */
+  large?: string;
   title: {
     zh: string;
     en: string;
