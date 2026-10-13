@@ -5,7 +5,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useLocale } from '@/components/LocaleProvider';
 import PhotoRiver from '@/components/PhotoRiver';
-import { mapLocations, visitedCountryCount, siteConfig } from '@/data';
+import { mapLocations, visitedCountryCount, siteConfig, latestPhotoDate } from '@/data';
 
 const GlobeMap = dynamic(() => import('@/components/GlobeMap'), {
   ssr: false,
@@ -17,6 +17,12 @@ const GlobeMap = dynamic(() => import('@/components/GlobeMap'), {
 });
 
 const totalPhotos = mapLocations.reduce((s, l) => s + l.photoCount, 0);
+
+// 'YYYY-MM-DD' 按本地日期构造，避免被当作 UTC 后在西半球少显示一天
+const localDate = (ymd: string) => {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+};
 
 export default function Home() {
   const { locale } = useLocale();
@@ -45,8 +51,15 @@ export default function Home() {
           <PhotoRiver locale={locale} />
         </div>
 
-        <p className="text-center text-zinc-400 text-sm italic">
+        {/* 座右铭 + 最近更新：一行，日期淡色接在句尾 */}
+        <p className="text-center text-sm text-zinc-400 italic">
           {locale === 'zh' ? siteConfig.motto.zh : siteConfig.motto.en}
+          {latestPhotoDate && (
+            <span className="not-italic text-zinc-600 block sm:inline whitespace-nowrap mt-1 sm:mt-0">
+              <span className="hidden sm:inline">{' '}· </span>{locale === 'zh' ? '更新于 ' : 'updated '}
+              {localDate(latestPhotoDate).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+            </span>
+          )}
         </p>
       </main>
 

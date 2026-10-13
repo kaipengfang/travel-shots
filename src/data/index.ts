@@ -56,3 +56,10 @@ export const visitedProvinces: number[] = allRegions
 // 已访问国家数量：不含 "-" 的 mapCode 各计一次，任一 "CN-" 省份存在则中国计一次
 export const visitedCountryCount: number =
   visitedCountries.length + (visitedProvinces.length > 0 ? 1 : 0);
+
+/** 全站最新一张照片的拍摄日期（EXIF），作为“上次更新”时间 */
+export const latestPhotoDate: string = allRegions
+  .flatMap(r => r.albums.flatMap(a => a.photos.map(p => p.date)))
+  .filter(Boolean)
+  .sort()
+  .at(-1) ?? '';
