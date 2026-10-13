@@ -12,3 +12,6 @@ dist/
 
 # Python virtual environment
 .venv/
+.env*.local
+tsconfig.tsbuildinfo
+.claude/
