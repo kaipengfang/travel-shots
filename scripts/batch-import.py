@@ -16,7 +16,7 @@ THUMBNAIL_WIDTH = 800
 WEBP_QUALITY = 85
 
 DESKTOP = Path.home() / "Desktop"
-WEBSITE = Path("/Users/fkp/clawd/projects/photography-website")
+WEBSITE = Path("/path/to/travel-shots")
 PHOTOS_DIR = WEBSITE / "public" / "photos"
 DATA_DIR = WEBSITE / "src" / "data"
 

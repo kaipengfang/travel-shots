@@ -9,35 +9,42 @@
       "title": { "zh": "示例相册", "en": "Demo Album" },
       "date": "2024-01-01",
       "cover": "demo/cover.webp",
+      "highlights": ["demo-001", "demo-002"],
       "photos": [
         {
-          "src": "demo/photo1.jpg",
+          "id": "demo-001",
           "thumbnail": "demo/photo1.webp",
+          "large": "demo/photo1_2048.webp",
+          "xlarge": "demo/photo1_3840.webp",
           "width": 1920,
           "height": 1280,
+          "title": { "zh": "示例照片 1", "en": "Demo Photo 1" },
           "caption": { "zh": "示例照片 1", "en": "Demo Photo 1" },
           "location": { "zh": "示例地点", "en": "Demo Location" },
           "date": "2024-01-01",
           "exif": {
             "camera": "Sony A7C",
             "lens": "24-70mm f/2.8",
-            "iso": "100",
+            "iso": 100,
             "aperture": "f/8",
             "shutter": "1/250s"
           }
         },
         {
-          "src": "demo/photo2.jpg",
+          "id": "demo-002",
           "thumbnail": "demo/photo2.webp",
+          "large": "demo/photo2_2048.webp",
+          "xlarge": "demo/photo2_3840.webp",
           "width": 1280,
           "height": 1920,
+          "title": { "zh": "示例照片 2", "en": "Demo Photo 2" },
           "caption": { "zh": "示例照片 2", "en": "Demo Photo 2" },
           "location": { "zh": "示例地点", "en": "Demo Location" },
-          "date": "2024-01-01",
+          "date": "2024-01-02",
           "exif": {
             "camera": "Sony A7C",
             "lens": "24-70mm f/2.8",
-            "iso": "200",
+            "iso": 200,
             "aperture": "f/5.6",
             "shutter": "1/500s"
           }

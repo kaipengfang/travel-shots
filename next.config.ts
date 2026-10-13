@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'photos.fangkaipeng.com',
+        hostname: 'your-cdn.com',
       },
     ],
   },

@@ -2,7 +2,7 @@
 # 批量生成所有文件夹的缩略图
 
 DESKTOP=~/Desktop
-WEBSITE=/Users/fkp/clawd/projects/photography-website
+WEBSITE=/path/to/travel-shots
 
 # 需要处理的文件夹列表
 FOLDERS=(

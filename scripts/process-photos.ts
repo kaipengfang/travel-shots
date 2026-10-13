@@ -353,7 +353,7 @@ async function processFolder(folderPath: string, outputPath: string) {
 const args = process.argv.slice(2);
 if (args.length < 1) {
   console.log('用法: npx ts-node process-photos.ts <文件夹路径> [输出路径]');
-  console.log('示例: npx ts-node process-photos.ts "/Users/fkp/Desktop/2024.05.01 香港"');
+  console.log('示例: npx ts-node process-photos.ts "/path/to/photos"');
   process.exit(1);
 }
 
