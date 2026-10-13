@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Photo } from '@/lib/types';
 import { photoUrl } from '@/lib/photoUrl';
+import LikeButton from '@/components/LikeButton';
 
 interface PhotoLightboxProps {
   photos: Photo[];
@@ -11,6 +12,8 @@ interface PhotoLightboxProps {
   locale: 'zh' | 'en';
   onClose: () => void;
   onNavigate: (index: number) => void;
+  /** 返回该照片的点赞 target；不传则不显示爱心 */
+  likeTarget?: (photo: Photo) => string;
 }
 
 export default function PhotoLightbox({
@@ -18,10 +21,10 @@ export default function PhotoLightbox({
   currentIndex,
   locale,
   onClose,
-  onNavigate
+  onNavigate,
+  likeTarget
 }: PhotoLightboxProps) {
   const photo = photos[currentIndex];
-  const [mounted, setMounted] = useState(false);
   
   const goNext = useCallback(() => {
     if (currentIndex < photos.length - 1) {
@@ -34,11 +37,6 @@ export default function PhotoLightbox({
       onNavigate(currentIndex - 1);
     }
   }, [currentIndex, onNavigate]);
-
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -64,11 +62,32 @@ export default function PhotoLightbox({
     return () => { document.body.style.overflow = ''; };
   }, []);
 
+  // 预加载前后一张，切换时不等待
+  useEffect(() => {
+    [photos[currentIndex - 1], photos[currentIndex + 1]].forEach(p => {
+      if (!p) return;
+      const img = new window.Image();
+      img.src = photoUrl(p.large || p.src);
+    });
+  }, [currentIndex, photos]);
+
+  // 触屏左右滑动切换
+  const touchStartX = useRef<number | null>(null);
+  const handleTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0].clientX; };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(dx) < 50) return;
+    if (dx < 0) goNext(); else goPrev();
+  };
+
   const lightboxContent = (
     <div className="fixed inset-0 z-[9999] flex flex-col" style={{ height: '100vh', width: '100vw' }}>
       {/* 毛玻璃背景层 - 强模糊 + 半透明深色遮罩 */}
       <div 
         className="absolute inset-0 z-0"
+        onClick={onClose}
         style={{ 
           backdropFilter: 'blur(40px) saturate(120%)',
           WebkitBackdropFilter: 'blur(40px) saturate(120%)',
@@ -113,9 +132,11 @@ export default function PhotoLightbox({
       {/* 图片区域 - 居中显示，最大化且不超出边界 */}
       <div 
         className="relative flex-1 flex items-center justify-center p-4 z-10 overflow-hidden"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
       >
         <img
-          src={photoUrl(photo.src)}
+          src={photoUrl(photo.large || photo.src)}
           alt={photo.title?.[locale] || ''}
           title="© Copyright 2026 途影"
           className="max-w-[95%] max-h-[calc(100vh-200px)] object-contain rounded-lg cursor-context-menu"
@@ -182,16 +203,19 @@ export default function PhotoLightbox({
         
         {/* 描述 */}
         {photo.caption?.[locale] && (
-          <p className="text-sm text-gray-300 italic mb-2 max-w-2xl mx-auto">"{photo.caption[locale]}"</p>
+          <p className="text-sm text-gray-300 italic mb-2 max-w-2xl mx-auto">&ldquo;{photo.caption[locale]}&rdquo;</p>
         )}
         
-        {/* 页码 */}
-        <p className="text-xs text-gray-600">{currentIndex + 1} / {photos.length}</p>
+        {/* 页码 + 点赞 */}
+        <div className="flex items-center justify-center gap-4">
+          <p className="text-xs text-gray-600">{currentIndex + 1} / {photos.length}</p>
+          {likeTarget && <LikeButton target={likeTarget(photo)} locale={locale} size="sm" />}
+        </div>
       </div>
     </div>
   );
 
-  // 使用 Portal 渲染到 body，避免父元素 transform 影响 fixed 定位
-  if (!mounted) return null;
+  // 使用 Portal 渲染到 body，避免父元素 transform 影响 fixed 定位；SSR 时不渲染
+  if (typeof document === 'undefined') return null;
   return createPortal(lightboxContent, document.body);
 }

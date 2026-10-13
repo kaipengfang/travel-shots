@@ -1,150 +1,98 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { getLikesClient, getClientIp, hashIp, getCountryCode, isValidTarget } from '@/lib/likesServer';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const MAX_TARGETS = 200;
 
-// 免费 IP 查询 API
-async function getIpInfo(ip: string) {
-  if (!ip || ip === 'unknown' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.')) {
-    return { country_code: 'LOCAL', country_emoji: '🌍', country_name: 'Local' };
-  }
-  
-  try {
-    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,countryCode,country`);
-    const data = await res.json();
-    
-    if (data.status === 'success') {
-      const emojiMap: Record<string, string> = {
-        CN: '🇨🇳', US: '🇺🇸', JP: '🇯🇵', KR: '🇰🇷', GB: '🇬🇧', FR: '🇫🇷', DE: '🇩🇪',
-        CA: '🇨🇦', AU: '🇦🇺', IN: '🇮🇳', RU: '🇷🇺', BR: '🇧🇷', IT: '🇮🇹', ES: '🇪🇸',
-        TH: '🇹🇭', VN: '🇻🇳', MY: '🇲🇾', SG: '🇸🇬', HK: '🇭🇰', TW: '🇹🇼',
-      };
-      return {
-        country_code: data.countryCode || 'XX',
-        country_emoji: emojiMap[data.countryCode] || '🌍',
-        country_name: data.country || 'Unknown'
-      };
-    }
-  } catch (e) {
-    console.error('IP lookup failed:', e);
-  }
-  
-  return { country_code: 'XX', country_emoji: '🌍', country_name: 'Unknown' };
-}
-
-// 点赞 API
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { album_id, user_id, action } = body;
-
-    // 获取 IP
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] 
-      || request.headers.get('x-real-ip') 
-      || 'unknown';
-    
-    const ipInfo = await getIpInfo(ip);
-
-    if (!album_id || !user_id) {
-      return NextResponse.json({ 
-        success: false, 
-        error: '缺少必要参数' 
-      }, { status: 400 });
-    }
-
-    if (action === 'like') {
-      // 检查是否已点赞
-      const { data: existing } = await supabase
-        .from('album_likes')
-        .select('*')
-        .eq('album_id', album_id)
-        .eq('user_id', user_id)
-        .single();
-
-      if (existing) {
-        return NextResponse.json({ 
-          success: false, 
-          error: '已经点赞过了' 
-        }, { status: 400 });
-      }
-
-      // 添加点赞
-      const { data, error } = await supabase
-        .from('album_likes')
-        .insert({
-          album_id,
-          user_id,
-          ip_address: ip,
-          country_code: ipInfo.country_code,
-          country_emoji: ipInfo.country_emoji
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      return NextResponse.json({ success: true, data });
-    }
-
-    if (action === 'unlike') {
-      const { error } = await supabase
-        .from('album_likes')
-        .delete()
-        .eq('album_id', album_id)
-        .eq('user_id', user_id);
-
-      if (error) throw error;
-
-      return NextResponse.json({ success: true });
-    }
-
-    return NextResponse.json({ 
-      success: false, 
-      error: '未知操作' 
-    }, { status: 400 });
-
-  } catch (error) {
-    console.error('API error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: '服务器错误' 
-    }, { status: 500 });
-  }
-}
-
-// 获取点赞数
+/**
+ * GET /api/likes?targets=album:a,photo:b,...
+ * 返回每个 target 的点赞数，以及当前 IP 已点赞的 target 列表。
+ */
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const album_id = searchParams.get('album_id');
+  const supabase = getLikesClient();
+  if (!supabase) return NextResponse.json({ success: false, error: 'likes not configured' }, { status: 503 });
 
-    if (!album_id) {
-      return NextResponse.json({ 
-        success: false, 
-        error: '缺少 album_id' 
-      }, { status: 400 });
-    }
-
-    // 获取点赞数
-    const { count, error: countError } = await supabase
-      .from('album_likes')
-      .select('*', { count: 'exact', head: true })
-      .eq('album_id', album_id);
-
-    if (countError) throw countError;
-
-    return NextResponse.json({ 
-      success: true, 
-      count: count || 0 
-    });
-
-  } catch (error) {
-    console.error('API error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: '服务器错误' 
-    }, { status: 500 });
+  const raw = request.nextUrl.searchParams.get('targets') || '';
+  const targets = raw.split(',').filter(isValidTarget).slice(0, MAX_TARGETS);
+  if (targets.length === 0) {
+    return NextResponse.json({ success: false, error: 'missing targets' }, { status: 400 });
   }
+
+  const ipHash = hashIp(getClientIp(request));
+
+  const { data, error } = await supabase
+    .from('likes')
+    .select('target_id, ip_hash')
+    .in('target_id', targets);
+
+  if (error) {
+    console.error('likes GET failed:', error.message);
+    return NextResponse.json({ success: false, error: 'server error' }, { status: 500 });
+  }
+
+  const counts: Record<string, number> = {};
+  const liked: string[] = [];
+  for (const row of data ?? []) {
+    counts[row.target_id] = (counts[row.target_id] || 0) + 1;
+    if (row.ip_hash === ipHash) liked.push(row.target_id);
+  }
+
+  return NextResponse.json({ success: true, counts, liked }, {
+    headers: { 'Cache-Control': 'private, no-store' },
+  });
+}
+
+/**
+ * POST /api/likes  { target_id }
+ * 以 IP 为凭证切换点赞状态，返回最新状态与计数。
+ * 依赖表上的 unique(target_id, ip_hash) 约束避免并发重复插入。
+ */
+export async function POST(request: NextRequest) {
+  const supabase = getLikesClient();
+  if (!supabase) return NextResponse.json({ success: false, error: 'likes not configured' }, { status: 503 });
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ success: false, error: 'invalid json' }, { status: 400 });
+  }
+  const targetId = (body as { target_id?: unknown })?.target_id;
+  if (!isValidTarget(targetId)) {
+    return NextResponse.json({ success: false, error: 'invalid target_id' }, { status: 400 });
+  }
+
+  const ipHash = hashIp(getClientIp(request));
+
+  // 先尝试删除；删到了说明原本已点赞，这次是取消
+  const { data: removed, error: delError } = await supabase
+    .from('likes')
+    .delete()
+    .eq('target_id', targetId)
+    .eq('ip_hash', ipHash)
+    .select('id');
+
+  if (delError) {
+    console.error('likes unlike failed:', delError.message);
+    return NextResponse.json({ success: false, error: 'server error' }, { status: 500 });
+  }
+
+  let liked = false;
+  if (!removed || removed.length === 0) {
+    const { error: insError } = await supabase
+      .from('likes')
+      .insert({ target_id: targetId, ip_hash: ipHash, country_code: getCountryCode(request) });
+    // 23505 = unique violation：并发下已被另一请求插入，视为已点赞
+    if (insError && insError.code !== '23505') {
+      console.error('likes like failed:', insError.message);
+      return NextResponse.json({ success: false, error: 'server error' }, { status: 500 });
+    }
+    liked = true;
+  }
+
+  const { count } = await supabase
+    .from('likes')
+    .select('id', { count: 'exact', head: true })
+    .eq('target_id', targetId);
+
+  return NextResponse.json({ success: true, liked, count: count ?? 0 });
 }

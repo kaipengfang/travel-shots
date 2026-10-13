@@ -1,18 +1,20 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import PhotoGallery from '@/components/PhotoGallery';
-import AlbumInteraction from '@/components/AlbumInteraction';
 import { regions } from '@/data';
 
 export default function AlbumPage() {
   const params = useParams();
   const regionId = params.regionId as string;
   const albumId = params.albumId as string;
+  const searchParams = useSearchParams();
+  const photoParam = searchParams.get('photo');
+  const initialPhotoIndex = photoParam !== null ? parseInt(photoParam, 10) : null;
   const [locale, setLocale] = useState<'zh' | 'en'>('zh');
 
   // 从 localStorage 读取语言偏好
@@ -67,12 +69,9 @@ export default function AlbumPage() {
           photos={album.photos} 
           locale={locale}
           title={album.title[locale]}
-        />
-
-        {/* 点赞评论 */}
-        <AlbumInteraction 
-          albumId={`${regionId}-${albumId}`} 
-          locale={locale} 
+          initialPhotoIndex={initialPhotoIndex}
+          regionId={regionId}
+          albumId={albumId}
         />
       </main>
 

@@ -7,7 +7,6 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import AlbumGrid from '@/components/AlbumGrid';
 import PhotoGallery from '@/components/PhotoGallery';
-import AlbumInteraction from '@/components/AlbumInteraction';
 import { regions } from '@/data';
 
 export default function RegionPage() {
@@ -84,10 +83,8 @@ export default function RegionPage() {
               locale={locale}
               title={region.albums[0]?.title[locale]}
               initialPhotoIndex={initialPhotoIndex}
-            />
-            <AlbumInteraction 
-              albumId={`${regionId}-${region.albums[0]?.id}`} 
-              locale={locale} 
+              regionId={regionId}
+              albumId={region.albums[0]?.id || ''}
             />
           </>
         )}
